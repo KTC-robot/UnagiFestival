@@ -14,4 +14,5 @@ https://www.kagoya.jp/howto/it-glossary/develop/github_ssh/
 git clone git@github.com:KTC-robot/UnagiFestival.git
 ```
 としてくれ
-快刀乱麻
+快刀乱麻    
+温故知新
