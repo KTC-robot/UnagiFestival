@@ -30,8 +30,3 @@ pip download -r requirements.txt setuptools wheel -d ./wheels \
   --abi cp312 \
   --only-binary=:all: \
 """
-"rp:setup" = """ \
-uv pip install --no-index --find-links=./wheels setuptools wheel && \
-uv pip install --no-index --find-links=./wheels -r requirements.txt && \
-uv pip install --no-index --find-links=./wheels --no-build-isolation --no-deps -e . \
-"""

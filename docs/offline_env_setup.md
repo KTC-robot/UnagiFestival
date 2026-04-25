@@ -11,6 +11,15 @@ uv pip compile pyproject.toml -o requirements.txt
 
 ## 2. パッケージのダウンロード (ホストPC)
 
+### 2-1. とりあえずこれ!!
+
+```bash
+# ホストPC側でWheelを一括ダウンロード & ビルド
+uv run task whl
+```
+
+### 2-2. コケたらこっち
+
 Raspberry Pi 5のアーキテクチャ（aarch64, Python 3.12）を指定し、コンパイル済みバイナリ（Wheel）のみを一括ダウンロードする。
 
 ```zsh
