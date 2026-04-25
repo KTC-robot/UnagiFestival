@@ -1,4 +1,7 @@
 .venv
+.ruff_cache
 
 .ruff.toml
 .ty.toml
+
+wheels

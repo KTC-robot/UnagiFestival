@@ -12,6 +12,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pip>=26.0.1",
     "ruff>=0.15.12",
     "taskipy>=1.14.1",
     "ty>=0.0.32",
@@ -20,3 +21,17 @@ dev = [
 [tool.taskipy.tasks]
 fmt = "ruff check --fix && ruff format"
 type = "ty check"
+whl = """ \
+uv pip compile pyproject.toml -o requirements.txt && \
+pip download -r requirements.txt setuptools wheel -d ./wheels \
+  --platform manylinux2014_aarch64 \
+  --python-version 312 \
+  --implementation cp \
+  --abi cp312 \
+  --only-binary=:all: \
+"""
+"rp:setup" = """ \
+uv pip install --no-index --find-links=./wheels setuptools wheel && \
+uv pip install --no-index --find-links=./wheels -r requirements.txt && \
+uv pip install --no-index --find-links=./wheels --no-build-isolation --no-deps -e . \
+"""
