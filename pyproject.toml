@@ -1,0 +1,33 @@
+[project]
+name = "unagifestival"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pip>=26.0.1",
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.12",
+    "taskipy>=1.14.1",
+    "ty>=0.0.32",
+]
+
+[tool.taskipy.tasks]
+fmt = "ruff check --fix && ruff format"
+type = "ty check"
+whl = """ \
+uv pip compile pyproject.toml -o requirements.txt && \
+pip download -r requirements.txt setuptools wheel -d ./wheels \
+  --platform manylinux2014_aarch64 \
+  --python-version 312 \
+  --implementation cp \
+  --abi cp312 \
+  --only-binary=:all: \
+"""
