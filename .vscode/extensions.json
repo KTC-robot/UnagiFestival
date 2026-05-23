@@ -1,7 +1,13 @@
 {
+    // See http://go.microsoft.com/fwlink/?LinkId=827846
+    // for the documentation about the extensions.json format
     "recommendations": [
-        "ms-python.python",
+        "astral-sh.ty",
         "charliermarsh.ruff",
-        "astral-sh.ty"
+        "ms-python.python",
+        "platformio.platformio-ide"
+    ],
+    "unwantedRecommendations": [
+        "ms-vscode.cpptools-extension-pack"
     ]
 }
