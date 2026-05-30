@@ -26,7 +26,7 @@ class IM920sL:
 
     def __init__(self, port: str, baudrate: int = 19200, timeout: float = 0.1) -> None:
         self._ser = serial.Serial(port, baudrate=baudrate, timeout=timeout)
-        self._lock = threading.Lock()
+        #self._lock = threading.Lock()
         logger.info("IM920sL opened: port=%s baudrate=%d", port, baudrate)
 
     # --- コンテキストマネージャ ---
@@ -61,9 +61,9 @@ class IM920sL:
         print("2")
         cmd = b"TXDA " + encoded + b"\r\n"
         print("1")
-        with self._lock:
-            self._ser.write(cmd)
-            resp = self._ser.readline().strip()
+        #with self._lock:
+        self._ser.write(cmd)
+        resp = self._ser.readline().strip()
         if resp == _NG:
             logger.warning("TX NG: %r", text_ascii)
         elif resp != _OK:
@@ -79,8 +79,8 @@ class IM920sL:
 
         受信フォーマット例: "0001,+65,Hello\r\n"
         """
-        with self._lock:
-            line = self._ser.readline()
+        #with self._lock:
+        line = self._ser.readline()
         if not line:
             return None
         decoded = line.decode("ascii", errors="replace").strip()

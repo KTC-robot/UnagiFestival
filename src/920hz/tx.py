@@ -28,7 +28,7 @@ def _recv_loop(module: IM920sL, stop: threading.Event) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="IM920sL 送信側サンプル")
-    parser.add_argument("--port", default="/dev/ttyUSB0")
+    parser.add_argument("--port", default="/dev/ttyUSB1")
     parser.add_argument("--baudrate", type=int, default=19200)
     args = parser.parse_args()
 
@@ -39,8 +39,8 @@ def main() -> None:
 
     try:
         with IM920sL(args.port, args.baudrate) as module:
-            recv_thread = threading.Thread(target=_recv_loop, args=(module, stop), daemon=True)
-            recv_thread.start()
+            #recv_thread = threading.Thread(target=_recv_loop, args=(module, stop), daemon=True)
+            #recv_thread.start()
 
             while True:
                 try:
