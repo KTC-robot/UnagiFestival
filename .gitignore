@@ -5,3 +5,6 @@
 .ty.toml
 
 wheels
+__pychache__
+*.egg-info
+*.log
