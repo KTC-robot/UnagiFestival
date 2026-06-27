@@ -1,3 +1,4 @@
+# Python
 .venv
 .ruff_cache
 
@@ -8,3 +9,8 @@ wheels
 __pychache__
 *.egg-info
 *.log
+
+# cpp
+
+# Other
+.omc/
