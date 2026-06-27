@@ -5,8 +5,17 @@ HardwareSerial IM920(2);
 const int IM920_RX = 16;  // ESP32 RX2 ← IM920sL TXD
 const int IM920_TX = 17;  // ESP32 TX2 → IM920sL RXD
 
+// 多くのESP32 DevKitでは内蔵LEDがGPIO2です。
+// ボードによって違う場合は、外付けLEDのGPIO番号に変更してください。
+const int LED_PIN = 2;
+
+const unsigned long BLINK_MS = 100;
+
 String pcInput = "";
 String imInput = "";
+
+bool ledOn = false;
+unsigned long ledOffAt = 0;
 
 String toHex(String text) {
   String hex = "";
@@ -38,9 +47,38 @@ void sendText(String text) {
   sendCommand(cmd);
 }
 
+void blinkLed() {
+  digitalWrite(LED_PIN, HIGH);
+  ledOn = true;
+  ledOffAt = millis() + BLINK_MS;
+}
+
+void updateLed() {
+  if (ledOn && millis() >= ledOffAt) {
+    digitalWrite(LED_PIN, LOW);
+    ledOn = false;
+  }
+}
+
+// IM920のコマンド応答ではなく、無線受信データらしい行だけを判定する
+bool isWirelessRxLine(const String& line) {
+  // OK / NG / RDID / RDVRなどの応答でLチカしないようにする
+  if (line == "OK") return false;
+  if (line == "NG") return false;
+
+  // 受信データはカンマ区切りで出ることが多い
+  // 例: 00,A0B0,CC:FF,00,A0,...
+  if (line.indexOf(',') >= 0) return true;
+
+  return false;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   IM920.begin(19200, SERIAL_8N1, IM920_RX, IM920_TX);
 
@@ -56,6 +94,8 @@ void setup() {
 }
 
 void loop() {
+  updateLed();
+
   // PCシリアルモニタ → ESP32 → IM920sLへ送信
   while (Serial.available()) {
     char c = Serial.read();
@@ -80,6 +120,11 @@ void loop() {
       if (imInput.length() > 0) {
         Serial.print("IM920 RX: ");
         Serial.println(imInput);
+
+        if (isWirelessRxLine(imInput)) {
+          blinkLed();
+        }
+
         imInput = "";
       }
     } else {
