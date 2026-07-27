@@ -1,5 +1,7 @@
 from typing import Final
 
+from unagifestival.tools.ps_controller.enums import ButtonCode
+
 # ============================================================
 # 既存設定
 # ============================================================
@@ -16,16 +18,13 @@ AXIS_NORMALIZED_CENTER: Final[float] = 0.0
 # IM920-HAT 設定
 # ============================================================
 
-# IM920-HATのI2Cアドレス
 SLAVE_ADR: Final[int] = 0x30
-
-# Raspberry Pi側の送信確認LED
 LED_PIN: Final[int] = 24
 
 # JOYパケット送信周期
 JOY_HZ: Final[float] = 5.0
 
-# IM920-HATのI2Cコマンド長制限対策
+# IM920-HATのI2Cコマンド長制限
 IM920_CMD_MAX_LEN: Final[int] = 32
 
 # 送信確認LEDの点灯時間
@@ -36,13 +35,8 @@ TX_LED_PULSE_SEC: Final[float] = 0.02
 # コントローラー正規化設定
 # ============================================================
 
-# スティックの遊び
 STICK_DEADZONE: Final[float] = 0.08
-
-# スティック送信値
 STICK_SEND_MAX: Final[int] = 127
-
-# L2/R2トリガー送信値
 TRIGGER_SEND_MAX: Final[int] = 255
 
 
@@ -50,19 +44,18 @@ TRIGGER_SEND_MAX: Final[int] = 255
 # PCA9685 / サーボ設定
 # ============================================================
 
-# PCA9685 1台で使用できるチャンネル数
 SERVO_CHANNEL_COUNT: Final[int] = 16
 
-# 各チャンネルを使用するかどうか。
-# 実際にサーボを接続したチャンネルだけ True に変更する。
+# CH0、CH1、CH2を使用。
+# サーボを追加したら、対応チャンネルをTrueへ変更する。
 SERVO_ENABLED: Final[tuple[bool, ...]] = (
-    False, False, False, False,
-    False, False, False, False,
-    False, False, False, False,
-    False, False, False, False,
+    True,  True,  True,  False,  # CH0～CH3
+    False, False, False, False,  # CH4～CH7
+    False, False, False, False,  # CH8～CH11
+    False, False, False, False,  # CH12～CH15
 )
 
-# 各チャンネルの安全な最小角度
+# ラズパイ側でも送信角度を安全範囲へ制限する。
 SERVO_MIN_ANGLE: Final[tuple[int, ...]] = (
     0, 0, 0, 0,
     0, 0, 0, 0,
@@ -70,7 +63,6 @@ SERVO_MIN_ANGLE: Final[tuple[int, ...]] = (
     0, 0, 0, 0,
 )
 
-# 各チャンネルの安全な最大角度
 SERVO_MAX_ANGLE: Final[tuple[int, ...]] = (
     180, 180, 180, 180,
     180, 180, 180, 180,
@@ -78,7 +70,6 @@ SERVO_MAX_ANGLE: Final[tuple[int, ...]] = (
     180, 180, 180, 180,
 )
 
-# 各チャンネルの待機角度
 SERVO_HOME_ANGLE: Final[tuple[int, ...]] = (
     90, 90, 90, 90,
     90, 90, 90, 90,
@@ -86,38 +77,43 @@ SERVO_HOME_ANGLE: Final[tuple[int, ...]] = (
     90, 90, 90, 90,
 )
 
-# True にすると、プログラム開始時に有効チャンネルを HOME_ANGLE へ動かす。
-# 機構が未完成の間は False のままを推奨。
+# Trueにすると、ラズパイ側プログラム起動時に
+# 有効チャンネルをHOME_ANGLEへ動かす。
+# 機構完成前はFalseを推奨。
 SERVO_SEND_HOME_ON_START: Final[bool] = False
 
-# ボタンを押したとき、指定角度へ移動する設定。
+
+# ============================================================
+# ボタンを押すと指定角度へ動かす
+# ============================================================
+#
 # 形式:
 #   button_id: ((channel, angle), ...)
 #
+# ボタン番号を直接書かず、enums.pyのButtonCodeを使用する。
 # 例:
-# SERVO_BUTTON_ACTIONS = {
-#     3: ((0, 60),),               # SQUARE → CH0を60度
-#     2: ((0, 120), (1, 45)),      # TRIANGLE → CH0とCH1を同時動作
-# }
-SERVO_BUTTON_ACTIONS: Final[dict[int, tuple[tuple[int, int], ...]]] = {
-    3: ((2, 60),),    
-    2: ((2, 120),),   
-    1: ((1, 90),),
-    4: ((1,0),),    
+#   ButtonCode.SQUARE_BTN.packet_id
+#
+# CROSS、L1、R1、PSは足回りで使用するため、
+# サーボへ割り当てない。
+SERVO_BUTTON_ACTIONS: Final[
+    dict[int, tuple[tuple[int, int], ...]]
+] = {
+    ButtonCode.SQUARE_BTN.packet_id: ((2, 60),),
+    ButtonCode.TRIANGLE_BTN.packet_id: ((2, 120),),
+    ButtonCode.CIRCLE_BTN.packet_id: ((1, 90),),
+    ButtonCode.OPTIONS_BTN.packet_id: ((1, 0),),
 }
 
-# ボタンを押すたびに2つの角度を切り替える設定。
+
+# ============================================================
+# ボタンを押すたびに2つの角度を切り替える
+# ============================================================
+#
 # 形式:
 #   button_id: ((channel, angle_a, angle_b), ...)
-#
-# 例:
-# SERVO_TOGGLE_ACTIONS = {
-#     3: ((0, 60, 120),),          # SQUARE → CH0を60度⇔120度
-#     2: ((1, 40, 140),),          # TRIANGLE → CH1を40度⇔140度
-# }
 SERVO_TOGGLE_ACTIONS: Final[
     dict[int, tuple[tuple[int, int, int], ...]]
 ] = {
-    6: ((0,0,180),),
-    
+    ButtonCode.L2_BTN.packet_id: ((0, 0, 180),),
 }
