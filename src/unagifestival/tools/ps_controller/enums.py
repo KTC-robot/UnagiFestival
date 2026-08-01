@@ -3,16 +3,14 @@ from typing import Self
 
 from evdev import ecodes
 
-# ===== Controller Event Enums =====
+
+# ============================================================
+# Controller event types
+# ============================================================
 
 
 class EventType(IntEnum):
-    """evdevのイベントタイプを定義する列挙型.
-
-    SYN: 同期イベント (複数のイベント入力を1パケットにまとめる際の区切り)
-    KEY: ボタンやキーなどのデジタル入力 (0 or 1)
-    ABS: スティックやトリガーなどのアナログ絶対軸入力 (連続値)
-    """
+    """evdevのイベントタイプ。"""
 
     SYN = ecodes.EV_SYN
     KEY = ecodes.EV_KEY
@@ -20,15 +18,7 @@ class EventType(IntEnum):
 
 
 class AxisType(Enum):
-    """絶対軸 (ABS) のbindgen-cliと想定される値の範囲を分類する列挙型.
-
-    STICK: アナログスティック (通常 0〜255、中央付近でノイズが発生しやすい)
-    TRIGGER: アナログトリガー (通常 0〜255)
-    DPAD: [[
-        "cargo build --target wasm32-unknown-unknown --release",
-        "十字キー (-1, 0, 1) "
-    ]
-    """
+    """ABSイベントの軸種別。"""
 
     STICK = "STICK"
     TRIGGER = "TRIGGER"
@@ -36,18 +26,23 @@ class AxisType(Enum):
 
 
 class AxisCode(Enum):
-    """コントローラーのアナログ軸 (ABS) のイベントコードと、その軸の特性 (AxisType) を紐づける列挙型."""
+    """アナログ軸のevdevコードと軸種別。"""
 
-    # Lスティック
     LEFT_STICK_X = (ecodes.ABS_X, AxisType.STICK)
     LEFT_STICK_Y = (ecodes.ABS_Y, AxisType.STICK)
-    # Rスティック
+
     RIGHT_STICK_X = (ecodes.ABS_RX, AxisType.STICK)
     RIGHT_STICK_Y = (ecodes.ABS_RY, AxisType.STICK)
-    # L2/R2ボタン
-    LEFT_TRIGGER_L2 = (getattr(ecodes, "ABS_Z", 2), AxisType.TRIGGER)
-    RIGHT_TRIGGER_R2 = (getattr(ecodes, "ABS_RZ", 5), AxisType.TRIGGER)
-    # 十字キー
+
+    LEFT_TRIGGER_L2 = (
+        getattr(ecodes, "ABS_Z", 2),
+        AxisType.TRIGGER,
+    )
+    RIGHT_TRIGGER_R2 = (
+        getattr(ecodes, "ABS_RZ", 5),
+        AxisType.TRIGGER,
+    )
+
     DPAD_X = (ecodes.ABS_HAT0X, AxisType.DPAD)
     DPAD_Y = (ecodes.ABS_HAT0Y, AxisType.DPAD)
 
@@ -60,37 +55,77 @@ class AxisCode(Enum):
         for axis in cls:
             if axis.code == code:
                 return axis
+
         return None
+
+
+# ============================================================
+# PS5 button table
+# ============================================================
 
 
 class ButtonCode(Enum):
-    """PSコントローラーのデジタルボタン (KEY) のイベントコードと、期待される型を紐づける列挙型.
+    """
+    PS5ボタンの対応表。
 
-    OSからはint型として取得されるが、実質的には 0(離上) または 1(押下) を表す bool 値であることを明示する。
+    ここだけを編集すれば、
+      ・Linux evdevコード
+      ・IM920で送るbutton_id
+      ・ログに表示するボタン名
+    の対応を一括管理できる。
+
+    tuple:
+        (evdev_code, packet_id)
+
+    例:
+        SQUARE_BTN = (308, 3)
     """
 
-    CROSS_BTN = (304, bool)
-    CIRCLE_BTN = (305, bool)
-    TRIANGLE_BTN = (307, bool)
-    SQUARE_BTN = (308, bool)
-    L1_BTN = (310, bool)
-    R1_BTN = (311, bool)
-    L2_BTN = (312, bool)
-    R2_BTN = (313, bool)
-    SHARE_BTN = (314, bool)
-    OPTIONS_BTN = (315, bool)
-    PS_BTN = (316, bool)
-    L3_BTN = (317, bool)
-    R3_BTN = (318, bool)
-    TOUCHPAD_BTN = (273, bool)
+    CROSS_BTN = (304, 0)
+    CIRCLE_BTN = (305, 1)
+    TRIANGLE_BTN = (307, 2)
+    SQUARE_BTN = (308, 3)
+    L1_BTN = (310, 4)
+    R1_BTN = (311, 5)
+    L2_BTN = (312, 6)
+    R2_BTN = (313, 7)
+    SHARE_BTN = (314, 8)
+    OPTIONS_BTN = (315, 9)
+    PS_BTN = (316, 10)
+    L3_BTN = (317, 11)
+    R3_BTN = (318, 12)
+    TOUCHPAD_BTN = (273, 13)
 
-    def __init__(self, code: int, value_type: type) -> None:
+    def __init__(self, code: int, packet_id: int) -> None:
         self.code = code
-        self.value_type = value_type
+        self.packet_id = packet_id
+
+        # 既存コードとの互換性のため残す。
+        self.value_type = bool
+
+    @property
+    def display_name(self) -> str:
+        """ログ表示用の名前。例: SQUARE_BTN -> SQUARE"""
+        return self.name.removesuffix("_BTN")
 
     @classmethod
     def get_by_code(cls, code: int) -> Self | None:
-        for btn in cls:
-            if btn.code == code:
-                return btn
+        """Linuxのevdevコードからボタンを取得する。"""
+        for button in cls:
+            if button.code == code:
+                return button
+
         return None
+
+    @classmethod
+    def get_by_packet_id(cls, packet_id: int) -> Self | None:
+        """IM920で送るbutton_idからボタンを取得する。"""
+        for button in cls:
+            if button.packet_id == packet_id:
+                return button
+
+        return None
+
+    @classmethod
+    def valid_packet_ids(cls) -> set[int]:
+        return {button.packet_id for button in cls}

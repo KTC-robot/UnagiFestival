@@ -1,0 +1,417 @@
+#include "chassis_ctrl.h"
+
+#include "can_comm.h"
+#include "util.h"
+
+#include <math.h>
+
+namespace {
+constexpr int NUM_MOTORS = 4;
+constexpr int NUM_WHEELS = 4;
+
+// wheel: FL, FR, RL, RR
+// motor: ID1, ID2, ID3, ID4
+const uint8_t WHEEL_TO_MOTOR[NUM_WHEELS] = {0, 2, 1, 3};
+const uint8_t WHEEL_ESC_ID[NUM_WHEELS] = {1, 3, 2, 4};
+const char* WHEEL_NAME[NUM_WHEELS] = {"FL", "FR", "RL", "RR"};
+
+const bool MOTOR_REVERSED[NUM_MOTORS] = {
+  false,
+  false,
+  true,
+  true
+};
+
+const int8_t FWD_SIGN[NUM_WHEELS] = {+1, +1, +1, +1};
+const int8_t STR_SIGN[NUM_WHEELS] = {+1, -1, -1, +1};
+const int8_t YAW_SIGN[NUM_WHEELS] = {-1, +1, -1, +1};
+
+const float WHEEL_GAIN_FWD[NUM_WHEELS] = {
+  1.000f, 1.000f, 1.000f, 1.000f
+};
+
+const float WHEEL_GAIN_BWD[NUM_WHEELS] = {
+  1.000f, 1.000f, 1.000f, 1.000f
+};
+
+const float WHEEL_GAIN_RIGHT[NUM_WHEELS] = {
+  1.000f, 1.000f, 1.000f, 1.000f
+};
+
+const float WHEEL_GAIN_LEFT[NUM_WHEELS] = {
+  1.000f, 1.000f, 1.000f, 1.000f
+};
+
+constexpr bool VX_INVERT = true;
+constexpr bool WZ_INVERT = true;
+
+constexpr int16_t MAX_CURRENT_COMMAND = 3000;
+constexpr int16_t CHASSIS_MAX_RPM = 8000;
+constexpr float CHASSIS_DEADZONE = 0.08f;
+
+constexpr bool ENABLE_MIN_RUN_RPM = false;
+constexpr int16_t MIN_RUN_RPM = 1200;
+constexpr int16_t DEAD_RPM = 200;
+
+constexpr float SPEED_KP = 1.00f;
+constexpr float SPEED_KI = 0.20f;
+constexpr float PID_INTEGRAL_LIMIT = 8000.0f;
+constexpr float TARGET_RPM_SLEW_PER_SEC = 6000.0f;
+
+constexpr uint32_t MOTOR_CONTROL_INTERVAL_US = 5000;
+
+constexpr int DRIVE_POWER_MIN = 10;
+constexpr int DRIVE_POWER_MAX = 80;
+constexpr int DRIVE_POWER_STEP = 5;
+
+int drivePowerPercent = 20;
+bool motorsActive = false;
+
+float requestedMotorRpm[NUM_MOTORS] = {};
+float rampedMotorRpm[NUM_MOTORS] = {};
+float pidIntegral[NUM_MOTORS] = {};
+
+uint32_t lastMotorControlUs = 0;
+uint32_t lastMotorPrintMs = 0;
+
+float applyMotorInverse(int motorIndex, float value) {
+  return MOTOR_REVERSED[motorIndex] ? -value : value;
+}
+
+int16_t clampCurrentCommand(float value) {
+  value = constrain(
+    value,
+    -static_cast<float>(MAX_CURRENT_COMMAND),
+    static_cast<float>(MAX_CURRENT_COMMAND)
+  );
+
+  return static_cast<int16_t>(lroundf(value));
+}
+
+int16_t snapTargetRpm(int16_t target) {
+  if (!ENABLE_MIN_RUN_RPM) {
+    return target;
+  }
+
+  const int magnitude = abs(static_cast<int>(target));
+
+  if (magnitude < DEAD_RPM) {
+    return 0;
+  }
+
+  if (magnitude < MIN_RUN_RPM) {
+    return target >= 0 ? MIN_RUN_RPM : -MIN_RUN_RPM;
+  }
+
+  return target;
+}
+
+float moveToward(float current, float target, float maxChange) {
+  const float difference = target - current;
+
+  if (difference > maxChange) {
+    return current + maxChange;
+  }
+
+  if (difference < -maxChange) {
+    return current - maxChange;
+  }
+
+  return target;
+}
+
+float getWheelTargetRpm(int wheelIndex) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+  return applyMotorInverse(motorIndex, requestedMotorRpm[motorIndex]);
+}
+
+float getWheelMeasuredRpm(int wheelIndex) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+
+  return applyMotorInverse(
+    motorIndex,
+    static_cast<float>(canCommGetMotorRpm(motorIndex))
+  );
+}
+
+int16_t getWheelCurrentCommand(int wheelIndex) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+
+  return static_cast<int16_t>(
+    applyMotorInverse(
+      motorIndex,
+      static_cast<float>(canCommGetCurrentCommand(motorIndex))
+    )
+  );
+}
+
+void printMotorValues(float vx, float vy, float wz) {
+  const uint32_t now = millis();
+
+  if (now - lastMotorPrintMs < 200) {
+    return;
+  }
+
+  lastMotorPrintMs = now;
+
+  Serial.print("MECANUM VX=");
+  Serial.print(vx, 2);
+  Serial.print(" VY=");
+  Serial.print(vy, 2);
+  Serial.print(" WZ=");
+  Serial.print(wz, 2);
+  Serial.print(" PWR=");
+  Serial.print(drivePowerPercent);
+  Serial.print("% | ");
+
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+
+    Serial.print(WHEEL_NAME[wheelIndex]);
+    Serial.print("(ID");
+    Serial.print(WHEEL_ESC_ID[wheelIndex]);
+    Serial.print(") T=");
+    Serial.print(static_cast<int>(getWheelTargetRpm(wheelIndex)));
+    Serial.print(" A=");
+    Serial.print(static_cast<int>(getWheelMeasuredRpm(wheelIndex)));
+    Serial.print(" I=");
+    Serial.print(static_cast<int>(getWheelCurrentCommand(wheelIndex)));
+    Serial.print(" C=");
+    Serial.print(static_cast<int>(canCommGetMotorTemperature(motorIndex)));
+
+    if (wheelIndex < NUM_WHEELS - 1) {
+      Serial.print(" | ");
+    }
+  }
+
+  Serial.println();
+}
+
+void setChassisSpringLogic(float vx, float vy, float wz) {
+  vx = constrain(vx, -1.0f, 1.0f);
+  vy = constrain(vy, -1.0f, 1.0f);
+  wz = constrain(wz, -1.0f, 1.0f);
+
+  if (fabsf(vx) < CHASSIS_DEADZONE) vx = 0.0f;
+  if (fabsf(vy) < CHASSIS_DEADZONE) vy = 0.0f;
+  if (fabsf(wz) < CHASSIS_DEADZONE) wz = 0.0f;
+
+  if (VX_INVERT) vx = -vx;
+  if (WZ_INVERT) wz = -wz;
+
+  if (vx == 0.0f && vy == 0.0f && wz == 0.0f) {
+    chassisCtrlStop();
+    return;
+  }
+
+  float wheel[NUM_WHEELS] = {};
+
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    float forward = static_cast<float>(FWD_SIGN[wheelIndex]) * vx;
+    float strafe = static_cast<float>(STR_SIGN[wheelIndex]) * vy;
+    const float yaw = static_cast<float>(YAW_SIGN[wheelIndex]) * wz;
+
+    if (vx > 0.0f) {
+      forward *= WHEEL_GAIN_FWD[wheelIndex];
+    } else if (vx < 0.0f) {
+      forward *= WHEEL_GAIN_BWD[wheelIndex];
+    }
+
+    if (vy > 0.0f) {
+      strafe *= WHEEL_GAIN_RIGHT[wheelIndex];
+    } else if (vy < 0.0f) {
+      strafe *= WHEEL_GAIN_LEFT[wheelIndex];
+    }
+
+    wheel[wheelIndex] = forward + strafe + yaw;
+  }
+
+  float maxMagnitude = 0.0f;
+
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    maxMagnitude = max(maxMagnitude, fabsf(wheel[wheelIndex]));
+  }
+
+  if (maxMagnitude > 1.0f) {
+    for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+      wheel[wheelIndex] /= maxMagnitude;
+    }
+  }
+
+  const float maxRpm =
+    static_cast<float>(CHASSIS_MAX_RPM) *
+    (static_cast<float>(drivePowerPercent) / 100.0f);
+
+  bool anyWheelActive = false;
+
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const int16_t wheelRpm =
+      static_cast<int16_t>(lroundf(wheel[wheelIndex] * maxRpm));
+
+    const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+
+    const int16_t rawMotorTarget =
+      static_cast<int16_t>(
+        applyMotorInverse(motorIndex, static_cast<float>(wheelRpm))
+      );
+
+    requestedMotorRpm[motorIndex] = snapTargetRpm(rawMotorTarget);
+
+    if (requestedMotorRpm[motorIndex] != 0.0f) {
+      anyWheelActive = true;
+    }
+  }
+
+  motorsActive = anyWheelActive;
+  printMotorValues(vx, vy, wz);
+}
+}
+
+void chassisCtrlBegin() {
+  lastMotorControlUs = micros();
+
+  Serial.print("Chassis ready: Kp=");
+  Serial.print(SPEED_KP, 2);
+  Serial.print(" Ki=");
+  Serial.print(SPEED_KI, 2);
+  Serial.print(" current_limit=+/-");
+  Serial.println(MAX_CURRENT_COMMAND);
+}
+
+void chassisCtrlUpdate() {
+  if (!canCommIsReady()) {
+    return;
+  }
+
+  const uint32_t nowUs = micros();
+  const uint32_t elapsedUs = nowUs - lastMotorControlUs;
+
+  if (elapsedUs < MOTOR_CONTROL_INTERVAL_US) {
+    return;
+  }
+
+  lastMotorControlUs = nowUs;
+
+  float dt = static_cast<float>(elapsedUs) / 1000000.0f;
+
+  if (dt <= 0.0f || dt > 0.05f) {
+    dt = static_cast<float>(MOTOR_CONTROL_INTERVAL_US) / 1000000.0f;
+  }
+
+  const float maxRpmChange = TARGET_RPM_SLEW_PER_SEC * dt;
+
+  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
+    rampedMotorRpm[motorIndex] = moveToward(
+      rampedMotorRpm[motorIndex],
+      requestedMotorRpm[motorIndex],
+      maxRpmChange
+    );
+
+    if (!canCommFeedbackFresh(motorIndex)) {
+      canCommSetCurrentCommand(motorIndex, 0);
+      pidIntegral[motorIndex] = 0.0f;
+      continue;
+    }
+
+    if (fabsf(rampedMotorRpm[motorIndex]) < 1.0f) {
+      canCommSetCurrentCommand(motorIndex, 0);
+      pidIntegral[motorIndex] = 0.0f;
+      continue;
+    }
+
+    const float error =
+      rampedMotorRpm[motorIndex] -
+      static_cast<float>(canCommGetMotorRpm(motorIndex));
+
+    const float integralOld = pidIntegral[motorIndex];
+
+    float integralCandidate = integralOld + error * dt;
+    integralCandidate = constrain(
+      integralCandidate,
+      -PID_INTEGRAL_LIMIT,
+      PID_INTEGRAL_LIMIT
+    );
+
+    const float outputCandidate =
+      SPEED_KP * error + SPEED_KI * integralCandidate;
+
+    const bool saturatedHigh =
+      outputCandidate >= static_cast<float>(MAX_CURRENT_COMMAND);
+
+    const bool saturatedLow =
+      outputCandidate <= -static_cast<float>(MAX_CURRENT_COMMAND);
+
+    const bool allowIntegral =
+      (!saturatedHigh && !saturatedLow) ||
+      (saturatedHigh && error < 0.0f) ||
+      (saturatedLow && error > 0.0f);
+
+    const float integralUsed =
+      allowIntegral ? integralCandidate : integralOld;
+
+    const float output =
+      SPEED_KP * error + SPEED_KI * integralUsed;
+
+    canCommSetCurrentCommand(
+      motorIndex,
+      clampCurrentCommand(output)
+    );
+
+    pidIntegral[motorIndex] = integralUsed;
+  }
+}
+
+void chassisCtrlSetFromJoy(
+  int8_t lx,
+  int8_t ly,
+  int8_t rx,
+  int8_t dpadX,
+  int8_t dpadY
+) {
+  float vx = 0.0f;
+  float vy = 0.0f;
+  float wz = 0.0f;
+
+  if (dpadX != 0 || dpadY != 0) {
+    vx = static_cast<float>(dpadY);
+    vy = static_cast<float>(dpadX);
+  } else {
+    vx = utilJoyToFloat(ly);
+    vy = utilJoyToFloat(lx);
+    wz = utilJoyToFloat(rx);
+  }
+
+  setChassisSpringLogic(vx, vy, wz);
+}
+
+void chassisCtrlStop() {
+  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
+    requestedMotorRpm[motorIndex] = 0.0f;
+    rampedMotorRpm[motorIndex] = 0.0f;
+    pidIntegral[motorIndex] = 0.0f;
+    canCommSetCurrentCommand(motorIndex, 0);
+  }
+
+  motorsActive = false;
+  canCommZeroAllImmediate();
+}
+
+void chassisCtrlChangePower(int delta) {
+  drivePowerPercent = constrain(
+    drivePowerPercent + delta,
+    DRIVE_POWER_MIN,
+    DRIVE_POWER_MAX
+  );
+
+  Serial.print("DRIVE POWER=");
+  Serial.print(drivePowerPercent);
+  Serial.println("%");
+}
+
+int chassisCtrlGetPowerPercent() {
+  return drivePowerPercent;
+}
+
+bool chassisCtrlIsActive() {
+  return motorsActive;
+}
