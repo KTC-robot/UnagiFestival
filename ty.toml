@@ -1,9 +1,0 @@
-[src]
-include = ["**/src/**/*.py"]
-exclude = [
-  "**/.venv",
-  "**/__pycache__",
-]
-
-[environment]
-python = ".venv"
