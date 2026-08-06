@@ -23,3 +23,5 @@ __pychache__
 
 backup_before_pull/
 .vscode/extensions.json
+.vscode/c_cpp_properties.json
+.vscode/launch.json
