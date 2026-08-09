@@ -55,6 +55,8 @@ uint8_t servoLastAngle[SERVO_CHANNEL_COUNT] = {
   90, 90, 90, 90
 };
 
+bool servoControllerInitialized = false;
+
 uint16_t microsecondsToPcaTicks(uint16_t pulseUs) {
   const uint32_t periodUs = 1000000UL / SERVO_PWM_FREQ;
   uint32_t ticks = (static_cast<uint32_t>(pulseUs) * 4096UL) / periodUs;
@@ -131,6 +133,7 @@ void servoCtrlBegin() {
   servoDriver.setPWMFreq(SERVO_PWM_FREQ);
   delay(10);
 
+  servoControllerInitialized = true;
   servoCtrlDisableAll();
 
   Serial.println(
@@ -139,12 +142,21 @@ void servoCtrlBegin() {
 }
 
 void servoCtrlDisableAll() {
+  if (!servoControllerInitialized) {
+    return;
+  }
+
   for (uint8_t channel = 0; channel < SERVO_CHANNEL_COUNT; ++channel) {
     disableServo(channel);
   }
 }
 
 void servoCtrlHandlePacket(const String& hex) {
+  if (!servoControllerInitialized) {
+    Serial.println("SERVO ignored: PCA9685 is not initialized");
+    return;
+  }
+
   if (hex.length() < 6) {
     return;
   }

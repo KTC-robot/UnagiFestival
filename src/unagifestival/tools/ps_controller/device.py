@@ -6,7 +6,9 @@ from evdev import InputDevice, ecodes, list_devices
 
 from unagifestival.tools.ps_controller.handler import logger
 
+
 # ===== Controller Scoring Constants =====
+
 SCORE_AXIS_PRIMARY: Final[int] = 3
 SCORE_AXIS_SECONDARY: Final[int] = 2
 SCORE_BTN_PRIMARY: Final[int] = 2
@@ -15,7 +17,9 @@ SCORE_NAME_EXACT: Final[int] = 6
 SCORE_NAME_PARTIAL: Final[int] = 3
 PENALTY_IGNORED_DEVICE: Final[int] = -100
 
+
 # ===== Device Name Keywords =====
+
 KEYWORD_WIRELESS: Final[str] = "wireless controller"
 KEYWORD_DUALSENSE: Final[str] = "dualsense"
 KEYWORD_SONY: Final[str] = "sony"
@@ -23,11 +27,12 @@ KEYWORD_TOUCHPAD: Final[str] = "touchpad"
 KEYWORD_MOTION: Final[str] = "motion"
 
 
-def _calculate_device_score(device_name: str, absolute_codes: set, key_codes: set) -> int:  # noqa: C901, PLR0912
-    """デバイスが持つ機能 (軸、ボタン) や名前に基づいてスコアを算出する.
-
-    タッチパッドやモーションセンサー等のサブデバイスは除外ペナルティを与える.
-    """
+def _calculate_device_score(
+    device_name: str,
+    absolute_codes: set,
+    key_codes: set,
+) -> int:
+    """デバイスが持つ機能や名前に基づいてスコアを算出する."""
     score = 0
 
     if KEYWORD_TOUCHPAD in device_name or KEYWORD_MOTION in device_name:
@@ -65,14 +70,10 @@ def _calculate_device_score(device_name: str, absolute_codes: set, key_codes: se
     return score
 
 
-def find_controller() -> InputDevice:
-    """システム上の入力デバイスを走査し、スコアリング結果からメインのゲームコントローラーとして最適なデバイスを取得する.
+def find_controller() -> InputDevice | None:
+    """PS5コントローラーを検索する.
 
-    Returns:
-        InputDevice: 最適なコントローラーデバイス
-
-    Raises:
-        RuntimeError: 有効なコントローラーが見つからなかった場合
+    コントローラーが接続されていない場合はエラーにせず None を返す.
     """
     best_device = None
     best_score = -1
@@ -81,40 +82,79 @@ def find_controller() -> InputDevice:
         try:
             device = InputDevice(device_path)
             capabilities = device.capabilities(absinfo=True)
+
         except Exception:  # noqa: BLE001
-            logger.warning("Some error occurred, but ignore.", exc_info=True)
+            logger.warning(
+                "入力デバイスを読み込めませんでした: %s",
+                device_path,
+            )
             continue
 
         absolute_entries = capabilities.get(ecodes.EV_ABS, [])
         key_entries = capabilities.get(ecodes.EV_KEY, [])
 
-        absolute_codes = {entry[0] if isinstance(entry, tuple) else entry for entry in absolute_entries}
+        absolute_codes = {
+            entry[0] if isinstance(entry, tuple) else entry
+            for entry in absolute_entries
+        }
+
         key_codes = set(key_entries)
         device_name = (device.name or "").lower()
 
-        score = _calculate_device_score(device_name, absolute_codes, key_codes)
+        score = _calculate_device_score(
+            device_name,
+            absolute_codes,
+            key_codes,
+        )
 
         if score > best_score:
             best_score = score
             best_device = device
 
-    if not best_device:
-        msg = "No controller device found in /dev/input/event*"
-        raise RuntimeError(msg)
+    if best_device is None:
+        logger.warning(
+            "PS5コントローラーが接続されていません。コントローラーなしで続行します。"
+        )
+        return None
+
+    logger.info(
+        "Controller: %s %s",
+        best_device.path,
+        best_device.name,
+    )
+
     return best_device
 
 
-def get_absolute_axis_info(device: InputDevice) -> dict:
-    """デバイスの絶対軸 (ABS) 情報を取得し、軸コードをキーとした辞書を返す."""
+def get_absolute_axis_info(device: InputDevice | None) -> dict:
+    """デバイスの絶対軸 (ABS) 情報を取得する."""
+    if device is None:
+        return {}
+
     capabilities = device.capabilities(absinfo=True)
+
     axis_information_map = {}
+
     for entry in capabilities.get(ecodes.EV_ABS, []):
         if isinstance(entry, tuple):
             axis_code, axis_info = entry
             axis_information_map[axis_code] = axis_info
+
     return axis_information_map
 
 
-def wait_for_input_ready(file_descriptors: list, timeout_seconds: float = 0.0) -> tuple:
+def wait_for_input_ready(
+    file_descriptors: list,
+    timeout_seconds: float = 0.0,
+) -> tuple:
     """指定されたファイルディスクリプタが読み取り可能になるまで待機する."""
-    return select.select(file_descriptors, [], [], timeout_seconds)
+
+    if not file_descriptors:
+        return ([], [], [])
+
+    return select.select(
+        file_descriptors,
+        [],
+        [],
+        timeout_seconds,
+    )
