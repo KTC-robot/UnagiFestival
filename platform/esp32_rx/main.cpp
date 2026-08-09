@@ -225,13 +225,42 @@ void setup() {
 
   delay(500);
 
-  // 起動確認だけ行う。不要ならこの2行も消してよい
-  sendCommandToIm920("RDVR");
-  delay(200);
-  sendCommandToIm920("RDID");
+  // Shared I2C bus: PCA9685 + three VL53L0X sensors.
+  Wire.begin(21, 22);
+  Wire.setClock(100000UL);
+
+  //servoCtrlBegin();
+ 
+  if (!stepAirCtrlBegin()) {
+    Serial.println(
+     "WARNING: distance/air initialization failed. Valves stay OFF."
+    );
+  }
+
+  if (!canCommBegin()) {
+    Serial.println(
+      "WARNING: CAN initialization failed. Motors remain stopped."
+    );
+  }
+
+  chassisCtrlBegin();
+  im920CommBegin();
+  chassisCtrlStop();
+
+  Serial.println();
+  Serial.println("READY");
+  Serial.println();
 }
 
 void loop() {
-  updateLed();
-  readIm920Serial();
+  im920CommUpdate();
+
+  canCommReadFrames();
+  chassisCtrlUpdate();
+  canCommSendPeriodically();
+
+  stepAirCtrlUpdate();
+
+  im920CommCheckTimeout();
+  im920CommSendPeriodicStatus();
 }
