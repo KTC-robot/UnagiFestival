@@ -40,34 +40,54 @@ constexpr uint8_t STEP_AIR_VALVE_ON_LEVEL = HIGH;
 constexpr uint8_t STEP_AIR_VALVE_OFF_LEVEL = LOW;
 
 
-// 現在の正式対応はFRONT 1台のみ。VL53L0Xの初期アドレス0x29をそのまま使う。
-constexpr uint8_t STEP_AIR_FRONT_SENSOR_ADDRESS = 0x29;
+// TCA9548AはESP32側の上流I2Cバスへ接続する。
+// PCA9685を使う場合もTCA9548Aの下流ではなく、同じ上流バスへ直接接続する。
+constexpr uint8_t STEP_AIR_TCA9548A_ADDRESS = 0x70;
+
+// TCA9548Aは8チャネル構成。複数チャネル同時有効化は0x29衝突のため禁止する。
+constexpr uint8_t STEP_AIR_TCA9548A_CHANNEL_COUNT = 8;
+
+// 各VL53L0XはTCA9548Aで物理的に分離するため、全台デフォルトアドレス0x29を使う。
+constexpr uint8_t STEP_AIR_VL53L0X_ADDRESS = 0x29;
+
+// TCA9548Aのチャネル割当。段階テスト時も未使用センサーのチャネルへはアクセスしない。
+constexpr uint8_t STEP_AIR_FRONT_SENSOR_CHANNEL = 0;
+constexpr uint8_t STEP_AIR_CENTER_SENSOR_CHANNEL = 1;
+constexpr uint8_t STEP_AIR_REAR_SENSOR_CHANNEL = 2;
 
 
 // ============================================================
 // 現在接続しているセンサー
-// 現在はFRONT 1台だけを使う実機構成。
-// VL53L0Xは全台が起動時0x29になるため、同一I2Cバスへ複数台を直結できない。
-// 3台化する場合はTCA9548A等のI2C multiplexerや独立I2C busを別途設計する。
+// TCA9548A経由の段階テスト用設定。
+// Test 1: FRONTのみ true
+// Test 2: FRONT + CENTER を true
+// Test 3: FRONT + CENTER + REAR を true
 // ============================================================
 constexpr bool STEP_AIR_USE_FRONT_SENSOR = true;
-constexpr bool STEP_AIR_USE_CENTER_SENSOR = false;
-constexpr bool STEP_AIR_USE_REAR_SENSOR = false;
+constexpr bool STEP_AIR_USE_CENTER_SENSOR = true;
+constexpr bool STEP_AIR_USE_REAR_SENSOR = true;
 
 static_assert(
-  STEP_AIR_USE_FRONT_SENSOR &&
-  !STEP_AIR_USE_CENTER_SENSOR &&
-  !STEP_AIR_USE_REAR_SENSOR,
-  "Current VL53L0X hardware supports FRONT sensor only"
+  STEP_AIR_FRONT_SENSOR_CHANNEL < STEP_AIR_TCA9548A_CHANNEL_COUNT &&
+  STEP_AIR_CENTER_SENSOR_CHANNEL < STEP_AIR_TCA9548A_CHANNEL_COUNT &&
+  STEP_AIR_REAR_SENSOR_CHANNEL < STEP_AIR_TCA9548A_CHANNEL_COUNT,
+  "TCA9548A channel must be 0-7"
+);
+
+static_assert(
+  STEP_AIR_FRONT_SENSOR_CHANNEL != STEP_AIR_CENTER_SENSOR_CHANNEL &&
+  STEP_AIR_FRONT_SENSOR_CHANNEL != STEP_AIR_REAR_SENSOR_CHANNEL &&
+  STEP_AIR_CENTER_SENSOR_CHANNEL != STEP_AIR_REAR_SENSOR_CHANNEL,
+  "Each VL53L0X sensor must use a unique TCA9548A channel"
 );
 
 
 // ============================================================
 // 段差の自動エア制御
 //
-// 現在はFRONT 1台のみのため、自動段差制御に必要な3点測距ができない。
+// まずはTCA9548A経由で3台測距が安定することを確認するため false。
 // falseでも、接続済みセンサーの距離取得・Serial表示・PiへのAIR送信は行う。
-// 3台化する場合はI2Cアドレス衝突を避けるハードウェア方式を先に設計する。
+// 状態機械による自動バルブ制御の実機有効化は別作業で行う。
 // ============================================================
 constexpr bool STEP_AIR_ENABLE_AUTO_CONTROL = false;
 

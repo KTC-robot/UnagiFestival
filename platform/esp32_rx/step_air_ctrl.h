@@ -32,8 +32,26 @@ void stepAirCtrlUpdate();
  */
 bool stepAirCtrlSensorsReady();
 
+/**
+ * @brief 指定したVL53L0Xの測距値が利用可能か確認する。
+ *
+ * TCA9548A経由で初期化済み、かつstale timeout内に有効値を取得した場合だけtrue。
+ *
+ * @param sensorIndex 確認するセンサーインデックス。
+ * @return 測距値が新鮮な場合true。
+ */
 bool stepAirCtrlSensorFresh(int sensorIndex);
+
+/**
+ * @brief 指定したVL53L0Xの補正・フィルタ後距離を取得する。
+ *
+ * 値が古い、未初期化、または無効なセンサーの場合は-1を返す。
+ *
+ * @param sensorIndex 取得するセンサーインデックス。
+ * @return 距離[mm]。取得できない場合は-1。
+ */
 int stepAirCtrlGetDistanceMm(int sensorIndex);
+
 bool stepAirCtrlFrontValveOn();
 bool stepAirCtrlRearValveOn();
 StepAirState stepAirCtrlGetState();

@@ -25,6 +25,12 @@ const bool SENSOR_ENABLED[SENSOR_COUNT] = {
   STEP_AIR_USE_REAR_SENSOR
 };
 
+const uint8_t SENSOR_CHANNELS[SENSOR_COUNT] = {
+  STEP_AIR_FRONT_SENSOR_CHANNEL,
+  STEP_AIR_CENTER_SENSOR_CHANNEL,
+  STEP_AIR_REAR_SENSOR_CHANNEL
+};
+
 const int SENSOR_OFFSETS_MM[SENSOR_COUNT] = {
   STEP_AIR_FRONT_SENSOR_OFFSET_MM,
   STEP_AIR_CENTER_SENSOR_OFFSET_MM,
@@ -107,10 +113,12 @@ void configureI2CBus() {
 }
 
 /**
- * @brief ESP32側I2CドライバをVL53L0X用に作り直す。
+ * @brief ESP32側I2CドライバをTCA9548A/VL53L0X用に作り直す。
  *
  * 実機で安定した単体コードと同じくWire.end()から開始する。
  * センサーの外部リセット端子による復旧やアドレス変更は行わない。
+ * PCA9685を使う場合も同じ上流I2Cバスを共有するため、
+ * クロックとtimeoutはここで一元管理する。
  *
  * @return I2Cドライバの初期化に成功した場合true。
  */
@@ -132,15 +140,69 @@ bool initializeI2CBus() {
 }
 
 /**
+ * @brief TCA9548Aが上流I2Cバス上に存在するか確認する。
+ *
+ * TCA9548Aが応答しない状態でVL53L0Xを初期化すると、
+ * 0x29のセンサーへ到達できないため初期化を中止する。
+ *
+ * @return TCA9548AがACKを返した場合true。
+ */
+bool checkTca9548aReady() {
+  Wire.beginTransmission(STEP_AIR_TCA9548A_ADDRESS);
+
+  if (Wire.endTransmission() == 0) {
+    Serial.print("TCA9548A ready: address=0x");
+    Serial.println(STEP_AIR_TCA9548A_ADDRESS, HEX);
+    return true;
+  }
+
+  Serial.print("TCA9548A not found: address=0x");
+  Serial.println(STEP_AIR_TCA9548A_ADDRESS, HEX);
+  return false;
+}
+
+/**
+ * @brief TCA9548Aで使用するI2Cチャネルを選択する。
+ *
+ * 指定したチャネルだけをESP32側I2Cバスへ接続する。
+ * 各VL53L0Xは同じI2Cアドレス0x29を使用するため、
+ * センサーアクセス前に必ず対象チャネルを選択する必要がある。
+ * 複数チャネルを同時に有効化すると0x29が衝突するため行わない。
+ *
+ * @param channel 選択するTCA9548Aチャネル番号。
+ * @return チャネル選択に成功した場合true、失敗した場合false。
+ */
+bool selectSensorChannel(uint8_t channel) {
+  if (channel >= STEP_AIR_TCA9548A_CHANNEL_COUNT) {
+    return false;
+  }
+
+  Wire.beginTransmission(STEP_AIR_TCA9548A_ADDRESS);
+  Wire.write(static_cast<uint8_t>(1U << channel));
+
+  return Wire.endTransmission() == 0;
+}
+
+void printTcaChannelError(int index) {
+  Serial.print("TCA9548A CHANNEL ERROR: ");
+  Serial.print(SENSOR_NAMES[index]);
+  Serial.print(" CH=");
+  Serial.println(SENSOR_CHANNELS[index]);
+}
+
+/**
  * @brief TIMEOUT発生時のI2Cライン状態をSerialへ出力する。
  *
- * SDA/SCLがLOWに張り付いているか、バス自体はidleなのかを実機で切り分ける。
+ * TCA9548Aチャネル、SDA/SCLがLOWに張り付いているか、
+ * バス自体はidleなのかを実機で切り分ける。
  *
  * @param index TIMEOUTが発生したセンサーインデックス。
  */
 void printI2CTimeoutDiagnostic(int index) {
   Serial.print("VL53L0X TIMEOUT: ");
   Serial.print(SENSOR_NAMES[index]);
+  Serial.print(" CH=");
+  Serial.print(SENSOR_CHANNELS[index]);
   Serial.print(" SDA=");
   Serial.print(digitalRead(STEP_AIR_I2C_SDA_PIN));
   Serial.print(" SCL=");
@@ -331,14 +393,23 @@ void countSensorFailure(int index) {
   disableSensor(index);
 }
 
+bool prepareSensorChannel(int index) {
+  if (selectSensorChannel(SENSOR_CHANNELS[index])) {
+    return true;
+  }
+
+  printTcaChannelError(index);
+  return false;
+}
+
 /**
  * @brief VL53L0Xを初期化する。
  *
- * バルブを安全側OFFにしたうえでESP32側I2Cドライバを再初期化し、
+ * 対象TCA9548Aチャネルを選択したうえで、
  * VL53L0Xをデフォルトアドレス0x29で初期化する。
  * 外部リセット端子によるハードウェアリセットやアドレス変更は行わない。
  *
- * @param index 初期化対象のセンサーインデックス。現在はFRONTのみ対応。
+ * @param index 初期化対象のセンサーインデックス。
  * @return 初期化に成功した場合true。
  */
 bool initializeOneSensor(int index) {
@@ -354,7 +425,7 @@ bool initializeOneSensor(int index) {
 
   applyOutputsForState(StepAirState::STARTUP);
 
-  if (!initializeI2CBus()) {
+  if (!prepareSensorChannel(index)) {
     sensorAvailable[index] = false;
     clearOneSensorReading(index);
     return false;
@@ -362,7 +433,11 @@ bool initializeOneSensor(int index) {
 
   clearOneSensorReading(index);
 
-  if (!sensors[index].begin()) {
+  if (!sensors[index].begin(
+        STEP_AIR_VL53L0X_ADDRESS,
+        false,
+        &Wire
+      )) {
     Serial.print("VL53L0X init failed: ");
     Serial.println(SENSOR_NAMES[index]);
 
@@ -375,8 +450,10 @@ bool initializeOneSensor(int index) {
 
   Serial.print("VL53L0X ready: ");
   Serial.print(SENSOR_NAMES[index]);
+  Serial.print(" CH=");
+  Serial.print(SENSOR_CHANNELS[index]);
   Serial.print(" address=0x");
-  Serial.println(STEP_AIR_FRONT_SENSOR_ADDRESS, HEX);
+  Serial.println(STEP_AIR_VL53L0X_ADDRESS, HEX);
 
   return true;
 }
@@ -401,6 +478,12 @@ bool initializeAllSensors() {
 
   clearSensorReadings();
   markAllSensorsUnavailable();
+
+  if (!initializeI2CBus() || !checkTca9548aReady()) {
+    changeState(StepAirState::SENSOR_ERROR);
+    Serial.println("STEP AIR: TCA9548A initialization failed");
+    return false;
+  }
 
   for (int index = 0; index < SENSOR_COUNT; ++index) {
     if (sensorConfigured(index)) {
@@ -485,6 +568,11 @@ void storeSensorReading(int index, uint16_t rawDistanceMm) {
 
 void readOneSensor(int index) {
   if (!sensorConfigured(index) || !sensorAvailable[index]) {
+    return;
+  }
+
+  if (!prepareSensorChannel(index)) {
+    countSensorFailure(index);
     return;
   }
 
@@ -679,8 +767,8 @@ bool stateHeldLongEnough() {
 
 void updateStateMachine() {
   if (!autoControlConfigured()) {
-    // 現在はFRONT 1台の測距モード。
-    // 3点測距がないため、状態機械による自動段差制御は到達不能にする。
+    // 現在はTCA9548A経由の測距診断モード。
+    // 自動バルブ制御は3台測距の実機安定確認後に別作業で有効化する。
     if (allConfiguredSensorsFresh()) {
       if (currentState != StepAirState::STARTUP) {
         changeState(StepAirState::STARTUP);
@@ -694,7 +782,7 @@ void updateStateMachine() {
     return;
   }
 
-  // 将来ハードウェア側で3台測距を解決した場合だけ自動制御へ入る。
+  // 自動制御を有効化した場合も、3台すべて正常な場合だけ状態機械へ入る。
   if (!allSensorsFresh()) {
     recoveryConfirmCount = 0;
 
