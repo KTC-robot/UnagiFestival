@@ -66,6 +66,7 @@ constexpr int DRIVE_POWER_STEP = 5;
 
 int drivePowerPercent = 20;
 bool motorsActive = false;
+float longitudinalCommand = 0.0f;
 
 float requestedMotorRpm[NUM_MOTORS] = {};
 float rampedMotorRpm[NUM_MOTORS] = {};
@@ -198,6 +199,8 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 
   if (VX_INVERT) vx = -vx;
   if (WZ_INVERT) wz = -wz;
+
+  longitudinalCommand = vx;
 
   if (vx == 0.0f && vy == 0.0f && wz == 0.0f) {
     chassisCtrlStop();
@@ -385,6 +388,8 @@ void chassisCtrlSetFromJoy(
 }
 
 void chassisCtrlStop() {
+  longitudinalCommand = 0.0f;
+
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
     requestedMotorRpm[motorIndex] = 0.0f;
     rampedMotorRpm[motorIndex] = 0.0f;
@@ -414,4 +419,8 @@ int chassisCtrlGetPowerPercent() {
 
 bool chassisCtrlIsActive() {
   return motorsActive;
+}
+
+float chassisCtrlGetLongitudinalCommand() {
+  return longitudinalCommand;
 }

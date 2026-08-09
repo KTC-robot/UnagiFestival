@@ -19,19 +19,6 @@ constexpr uint32_t SENSOR_READ_INTERVAL_MS =
 
 Adafruit_VL53L0X sensors[SENSOR_COUNT];
 
-const int XSHUT_PINS[SENSOR_COUNT] = {
-  STEP_AIR_FRONT_XSHUT_PIN,
-  STEP_AIR_CENTER_XSHUT_PIN,
-  STEP_AIR_REAR_XSHUT_PIN
-};
-
-const uint8_t SENSOR_ADDRESSES[SENSOR_COUNT] = {
-  STEP_AIR_FRONT_SENSOR_ADDRESS,
-  STEP_AIR_CENTER_SENSOR_ADDRESS,
-  STEP_AIR_REAR_SENSOR_ADDRESS
-};
-
-
 const bool SENSOR_ENABLED[SENSOR_COUNT] = {
   STEP_AIR_USE_FRONT_SENSOR,
   STEP_AIR_USE_CENTER_SENSOR,
@@ -56,6 +43,7 @@ int sensorDistanceMm[SENSOR_COUNT] = {};
 uint32_t sensorLastGoodMs[SENSOR_COUNT] = {};
 uint32_t sensorUpdateCount[SENSOR_COUNT] = {};
 uint32_t lastEvaluatedUpdateCount[SENSOR_COUNT] = {};
+uint8_t sensorErrorCount[SENSOR_COUNT] = {};
 
 bool frontValveOn = false;
 bool rearValveOn = false;
@@ -101,30 +89,11 @@ bool autoControlConfigured() {
   );
 }
 
-/**
- * @brief VL53L0XのXSHUT状態を変更する。
- *
- * XSHUTを使用しないFRONT単体診断モードでは、
- * GPIO25/26/27へpinMode()もdigitalWrite()も行わない。
- *
- * @param index 操作対象のセンサーインデックス。
- * @param enabled trueの場合はセンサーを起動し、falseの場合は停止する。
- */
-void setSensorXshut(int index, bool enabled) {
-  if (!STEP_AIR_USE_XSHUT) {
-    return;
-  }
-
-  if (index < 0 || index >= SENSOR_COUNT) {
-    return;
-  }
-
-  pinMode(XSHUT_PINS[index], OUTPUT);
-  digitalWrite(
-    XSHUT_PINS[index],
-    enabled ? HIGH : LOW
-  );
-}
+enum class RangingStatusAction {
+  USE_MEASUREMENT,
+  IGNORE_MEASUREMENT,
+  COUNT_FAILURE
+};
 
 /**
  * @brief VL53L0X用I2C設定を現在の診断条件へ統一する。
@@ -135,6 +104,31 @@ void setSensorXshut(int index, bool enabled) {
 void configureI2CBus() {
   Wire.setClock(STEP_AIR_I2C_CLOCK_HZ);
   Wire.setTimeOut(STEP_AIR_I2C_TIMEOUT_MS);
+}
+
+/**
+ * @brief ESP32側I2CドライバをVL53L0X用に作り直す。
+ *
+ * 実機で安定した単体コードと同じくWire.end()から開始する。
+ * センサーの外部リセット端子による復旧やアドレス変更は行わない。
+ *
+ * @return I2Cドライバの初期化に成功した場合true。
+ */
+bool initializeI2CBus() {
+  Wire.end();
+  delay(50);
+
+  if (!Wire.begin(
+        STEP_AIR_I2C_SDA_PIN,
+        STEP_AIR_I2C_SCL_PIN,
+        STEP_AIR_I2C_CLOCK_HZ
+      )) {
+    Serial.println("[ERROR] I2C init failed");
+    return false;
+  }
+
+  Wire.setTimeOut(STEP_AIR_I2C_TIMEOUT_MS);
+  return true;
 }
 
 /**
@@ -157,35 +151,35 @@ void printI2CTimeoutDiagnostic(int index) {
  * @brief rangingTest()のAPIエラーを処理する。
  *
  * RANGE_ERRORは測距結果側の問題としてログを抑制し、
- * TIME_OUTとCONTROL_INTERFACEはstale判定による復旧へ任せるため明示ログだけ残す。
+ * TIME_OUTとCONTROL_INTERFACEは連続エラー回数による復旧対象にする。
  *
  * @param index エラーが発生したセンサーインデックス。
  * @param status rangingTest()が返したAPIステータス。
- * @return APIレベルで測距結果を参照してよい場合はtrue。
+ * @return 測距結果の扱いと復旧カウント要否。
  */
-bool handleRangingStatus(int index, VL53L0X_Error status) {
+RangingStatusAction handleRangingStatus(int index, VL53L0X_Error status) {
   switch (status) {
     case VL53L0X_ERROR_NONE:
-      return true;
+      return RangingStatusAction::USE_MEASUREMENT;
 
     case VL53L0X_ERROR_RANGE_ERROR:
-      return false;
+      return RangingStatusAction::IGNORE_MEASUREMENT;
 
     case VL53L0X_ERROR_TIME_OUT:
       printI2CTimeoutDiagnostic(index);
-      return false;
+      return RangingStatusAction::COUNT_FAILURE;
 
     case VL53L0X_ERROR_CONTROL_INTERFACE:
       Serial.print("VL53L0X I2C ERROR: ");
       Serial.println(SENSOR_NAMES[index]);
-      return false;
+      return RangingStatusAction::COUNT_FAILURE;
 
     default:
       Serial.print("VL53L0X API ERROR: ");
       Serial.print(SENSOR_NAMES[index]);
       Serial.print(" code=");
       Serial.println(static_cast<int>(status));
-      return false;
+      return RangingStatusAction::COUNT_FAILURE;
   }
 }
 
@@ -288,6 +282,7 @@ void clearOneSensorReading(int index) {
   sensorLastGoodMs[index] = 0;
   sensorUpdateCount[index] = 0;
   lastEvaluatedUpdateCount[index] = 0;
+  sensorErrorCount[index] = 0;
 }
 
 void clearSensorReadings() {
@@ -299,53 +294,78 @@ void clearSensorReadings() {
   transitionConfirmCount = 0;
 }
 
-void shutdownAllSensors() {
+void markAllSensorsUnavailable() {
   for (int index = 0; index < SENSOR_COUNT; ++index) {
-    setSensorXshut(index, false);
     sensorAvailable[index] = false;
   }
-
-  delay(50);
 }
 
 void disableSensor(int index) {
   sensorAvailable[index] = false;
   clearOneSensorReading(index);
 
-  setSensorXshut(index, false);
-
   Serial.print("VL53L0X disabled: ");
   Serial.println(SENSOR_NAMES[index]);
 }
 
+/**
+ * @brief 重大なVL53L0X APIエラーを連続回数として記録する。
+ *
+ * TIMEOUT/I2C/その他APIエラーが短時間に連続する場合は、
+ * stale時間を待たずに再初期化対象へ移す。
+ * RANGE_ERRORとRangeStatus異常は測距不能として扱い、この回数には含めない。
+ *
+ * @param index エラーを記録するセンサーインデックス。
+ */
+void countSensorFailure(int index) {
+  if (sensorErrorCount[index] < STEP_AIR_SENSOR_MAX_ERROR_COUNT) {
+    ++sensorErrorCount[index];
+  }
+
+  if (sensorErrorCount[index] < STEP_AIR_SENSOR_MAX_ERROR_COUNT) {
+    return;
+  }
+
+  Serial.print("VL53L0X error threshold reached: ");
+  Serial.println(SENSOR_NAMES[index]);
+  disableSensor(index);
+}
+
+/**
+ * @brief VL53L0Xを初期化する。
+ *
+ * バルブを安全側OFFにしたうえでESP32側I2Cドライバを再初期化し、
+ * VL53L0Xをデフォルトアドレス0x29で初期化する。
+ * 外部リセット端子によるハードウェアリセットやアドレス変更は行わない。
+ *
+ * @param index 初期化対象のセンサーインデックス。現在はFRONTのみ対応。
+ * @return 初期化に成功した場合true。
+ */
 bool initializeOneSensor(int index) {
   if (!sensorConfigured(index)) {
-    setSensorXshut(index, false);
     sensorAvailable[index] = false;
     clearOneSensorReading(index);
     return false;
   }
 
-  if (STEP_AIR_USE_XSHUT) {
-    setSensorXshut(index, false);
-    delay(10);
+  Serial.println();
+  Serial.print("VL53L0X initialize: ");
+  Serial.println(SENSOR_NAMES[index]);
 
-    setSensorXshut(index, true);
-    delay(50);
+  applyOutputsForState(StepAirState::STARTUP);
+
+  if (!initializeI2CBus()) {
+    sensorAvailable[index] = false;
+    clearOneSensorReading(index);
+    return false;
   }
 
   clearOneSensorReading(index);
 
-  // 単体テストで成功したAdafruit方式
-  if (!sensors[index].begin(
-        SENSOR_ADDRESSES[index],
-        false,
-        &Wire
-      )) {
+  if (!sensors[index].begin()) {
     Serial.print("VL53L0X init failed: ");
     Serial.println(SENSOR_NAMES[index]);
 
-    setSensorXshut(index, false);
     sensorAvailable[index] = false;
     return false;
   }
@@ -356,7 +376,7 @@ bool initializeOneSensor(int index) {
   Serial.print("VL53L0X ready: ");
   Serial.print(SENSOR_NAMES[index]);
   Serial.print(" address=0x");
-  Serial.println(SENSOR_ADDRESSES[index], HEX);
+  Serial.println(STEP_AIR_FRONT_SENSOR_ADDRESS, HEX);
 
   return true;
 }
@@ -380,14 +400,11 @@ bool initializeAllSensors() {
   lastInitializationAttemptMs = millis();
 
   clearSensorReadings();
-  shutdownAllSensors();
+  markAllSensorsUnavailable();
 
   for (int index = 0; index < SENSOR_COUNT; ++index) {
     if (sensorConfigured(index)) {
       initializeOneSensor(index);
-    } else {
-      // XSHUT有効時だけ未使用センサーを停止し、無効時はGPIOへ触れない。
-      setSensorXshut(index, false);
     }
   }
 
@@ -411,7 +428,7 @@ bool initializeAllSensors() {
     if (autoControlConfigured()) {
       stateBeforeError = StepAirState::FLAT_NORMAL;
       Serial.println(
-        "Three VL53L0X sensors initialized - AUTO CONTROL READY"
+        "VL53L0X sensors initialized - AUTO CONTROL READY"
       );
     } else {
       Serial.println(
@@ -463,6 +480,7 @@ void storeSensorReading(int index, uint16_t rawDistanceMm) {
 
   sensorLastGoodMs[index] = millis();
   ++sensorUpdateCount[index];
+  sensorErrorCount[index] = 0;
 }
 
 void readOneSensor(int index) {
@@ -475,13 +493,25 @@ void readOneSensor(int index) {
   const VL53L0X_Error status =
     sensors[index].rangingTest(&measurement, false);
 
-  if (!handleRangingStatus(index, status)) {
-    return;
+  switch (handleRangingStatus(index, status)) {
+    case RangingStatusAction::USE_MEASUREMENT:
+      break;
+
+    case RangingStatusAction::COUNT_FAILURE:
+      countSensorFailure(index);
+      return;
+
+    case RangingStatusAction::IGNORE_MEASUREMENT:
+    default:
+      return;
   }
 
   if (measurement.RangeStatus == 0) {
     storeSensorReading(index, measurement.RangeMilliMeter);
+    return;
   }
+
+  // API自体は成功しているため復旧カウントには入れず、次回測距へ任せる。
 }
 
 void readNextAvailableSensorIfDue() {
@@ -567,24 +597,6 @@ void markStaleSensorsUnavailable() {
   }
 }
 
-void recoverI2CBus() {
-  // SDA/SCLの一時的なハングから復帰するため、再初期化時だけ
-  // ESP32側I2Cドライバを作り直す。
-  // PCA9685と共有していても、同一loop内で順番に実行されるため
-  // 再初期化中の同時アクセスは発生しない。
-  Wire.end();
-  delay(20);
-
-  Wire.begin(
-    STEP_AIR_I2C_SDA_PIN,
-    STEP_AIR_I2C_SCL_PIN,
-    STEP_AIR_I2C_CLOCK_HZ
-  );
-  configureI2CBus();
-
-  delay(50);
-}
-
 void retryMissingSensorsIfDue() {
   const uint32_t now = millis();
 
@@ -613,8 +625,7 @@ void retryMissingSensorsIfDue() {
 
   lastInitializationAttemptMs = now;
 
-  Serial.println("VL53L0X retry: recovering I2C bus");
-  recoverI2CBus();
+  Serial.println("VL53L0X retry: reinitializing sensor and I2C bus");
 
   for (int index = 0; index < SENSOR_COUNT; ++index) {
     if (
@@ -668,8 +679,8 @@ bool stateHeldLongEnough() {
 
 void updateStateMachine() {
   if (!autoControlConfigured()) {
-    // 現在は測距テストモード。
-    // 接続すると設定したセンサーだけ監視し、エア自動制御はしない。
+    // 現在はFRONT 1台の測距モード。
+    // 3点測距がないため、状態機械による自動段差制御は到達不能にする。
     if (allConfiguredSensorsFresh()) {
       if (currentState != StepAirState::STARTUP) {
         changeState(StepAirState::STARTUP);
@@ -683,7 +694,7 @@ void updateStateMachine() {
     return;
   }
 
-  // 自動制御は3台すべて正常な場合だけ
+  // 将来ハードウェア側で3台測距を解決した場合だけ自動制御へ入る。
   if (!allSensorsFresh()) {
     recoveryConfirmCount = 0;
 
@@ -900,9 +911,6 @@ bool stepAirCtrlBegin() {
   stateEnteredMs = millis();
 
   applyOutputsForState(currentState);
-
-  // main.cppでWire.begin()済み。FRONT単体診断と同じ50 kHz/timeoutへ統一する。
-  configureI2CBus();
 
   const bool allInitialized = initializeAllSensors();
 

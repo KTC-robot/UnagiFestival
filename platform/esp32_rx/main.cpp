@@ -1,10 +1,8 @@
 #include <Arduino.h>
-#include <Wire.h>
 
 #include "can_comm.h"
 #include "chassis_ctrl.h"
 #include "im920_comm.h"
-#include "step_air_config.h"
 #include "step_air_ctrl.h"
 
 HardwareSerial IM920(2);
@@ -231,14 +229,6 @@ void setup() {
   Serial.println();
 
   delay(500);
-
-  // VL53L0X単体診断では、電磁弁ノイズに強かった50 kHzへ統一する。
-  Wire.begin(
-    STEP_AIR_I2C_SDA_PIN,
-    STEP_AIR_I2C_SCL_PIN,
-    STEP_AIR_I2C_CLOCK_HZ
-  );
-  Wire.setTimeOut(STEP_AIR_I2C_TIMEOUT_MS);
 
   //servoCtrlBegin();
  

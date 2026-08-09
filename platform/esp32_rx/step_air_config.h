@@ -29,17 +29,6 @@ constexpr uint32_t STEP_AIR_I2C_CLOCK_HZ = 50000UL;
 // 電磁弁動作直後のI2Cハングを早めに検出し、stale判定へ渡す。
 constexpr uint32_t STEP_AIR_I2C_TIMEOUT_MS = 50;
 
-// VL53L0XのI2Cアドレス割り当てで使用するXSHUTピン。
-constexpr int STEP_AIR_FRONT_XSHUT_PIN = 25;
-constexpr int STEP_AIR_CENTER_XSHUT_PIN = 26;
-constexpr int STEP_AIR_REAR_XSHUT_PIN = 27;
-
-// 現在は電磁弁動作直後のTIMEOUT原因がXSHUT配線ノイズかを切り分けるため、
-// FRONT 1台だけを0x29のまま使い、ESP32からXSHUT GPIOを一切操作しない。
-// 将来3台構成へ戻す場合、VL53L0Xは全台が起動時0x29で衝突するため、
-// XSHUTで1台ずつ起動してFRONT/CENTER/REARへ別アドレスを割り当てる必要がある。
-constexpr bool STEP_AIR_USE_XSHUT = false;
-
 // MOSFET/電磁弁ドライバ入力。
 constexpr int STEP_AIR_FRONT_VALVE_PIN = 23;
 constexpr int STEP_AIR_REAR_VALVE_PIN = 32;
@@ -51,40 +40,34 @@ constexpr uint8_t STEP_AIR_VALVE_ON_LEVEL = HIGH;
 constexpr uint8_t STEP_AIR_VALVE_OFF_LEVEL = LOW;
 
 
-// XSHUTなしの単体診断ではFRONTをVL53L0Xの初期アドレス0x29で使う。
-// XSHUTを有効化した3台構成では、起動後に0x30/0x31/0x32へ分離する。
-constexpr uint8_t STEP_AIR_FRONT_SENSOR_ADDRESS =
-  STEP_AIR_USE_XSHUT ? 0x30 : 0x29;
-constexpr uint8_t STEP_AIR_CENTER_SENSOR_ADDRESS = 0x31;
-constexpr uint8_t STEP_AIR_REAR_SENSOR_ADDRESS = 0x32;
+// 現在の正式対応はFRONT 1台のみ。VL53L0Xの初期アドレス0x29をそのまま使う。
+constexpr uint8_t STEP_AIR_FRONT_SENSOR_ADDRESS = 0x29;
 
 
 // ============================================================
 // 現在接続しているセンサー
-// 現在はFRONT 1台だけを使う診断構成。
-// XSHUT無効時は未接続センサーのXSHUTも含め、ESP32からGPIO操作しない。
+// 現在はFRONT 1台だけを使う実機構成。
+// VL53L0Xは全台が起動時0x29になるため、同一I2Cバスへ複数台を直結できない。
+// 3台化する場合はTCA9548A等のI2C multiplexerや独立I2C busを別途設計する。
 // ============================================================
 constexpr bool STEP_AIR_USE_FRONT_SENSOR = true;
 constexpr bool STEP_AIR_USE_CENTER_SENSOR = false;
 constexpr bool STEP_AIR_USE_REAR_SENSOR = false;
 
 static_assert(
-  STEP_AIR_USE_XSHUT ||
-  (
-    STEP_AIR_USE_FRONT_SENSOR &&
-    !STEP_AIR_USE_CENTER_SENSOR &&
-    !STEP_AIR_USE_REAR_SENSOR
-  ),
-  "Multiple VL53L0X sensors require XSHUT address assignment"
+  STEP_AIR_USE_FRONT_SENSOR &&
+  !STEP_AIR_USE_CENTER_SENSOR &&
+  !STEP_AIR_USE_REAR_SENSOR,
+  "Current VL53L0X hardware supports FRONT sensor only"
 );
 
 
 // ============================================================
 // 段差の自動エア制御
 //
-// 現在はFRONT 1台・XSHUTなしの測距診断中なので false。
+// 現在はFRONT 1台のみのため、自動段差制御に必要な3点測距ができない。
 // falseでも、接続済みセンサーの距離取得・Serial表示・PiへのAIR送信は行う。
-// 3台すべて取り付けて動作確認が終わったら true に変更する。
+// 3台化する場合はI2Cアドレス衝突を避けるハードウェア方式を先に設計する。
 // ============================================================
 constexpr bool STEP_AIR_ENABLE_AUTO_CONTROL = false;
 
@@ -107,6 +90,9 @@ constexpr uint32_t STEP_AIR_SENSOR_REINIT_AFTER_MS = 3000;
 
 // 再初期化を連打しない。5秒に1回まで。
 constexpr uint32_t STEP_AIR_SENSOR_REINIT_INTERVAL_MS = 5000;
+
+// TIMEOUT/I2C/重大APIエラーが連続した場合は、時間経過を待たずに再初期化対象にする。
+constexpr uint8_t STEP_AIR_SENSOR_MAX_ERROR_COUNT = 5;
 
 
 // 補正後の測距値として採用する範囲。
