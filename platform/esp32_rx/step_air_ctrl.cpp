@@ -11,6 +11,7 @@ constexpr int SENSOR_COUNT = 3;
 constexpr int FRONT_SENSOR = 0;
 constexpr int CENTER_SENSOR = 1;
 constexpr int REAR_SENSOR = 2;
+constexpr uint8_t COUNTER_SATURATION_VALUE = 255;
 
 // I2C速度と測距周期はstep_air_config.hで変更する。
 constexpr uint32_t SENSOR_READ_INTERVAL_MS =
@@ -98,6 +99,94 @@ bool autoControlConfigured() {
     STEP_AIR_USE_CENTER_SENSOR &&
     STEP_AIR_USE_REAR_SENSOR
   );
+}
+
+/**
+ * @brief VL53L0XのXSHUT状態を変更する。
+ *
+ * XSHUTを使用しないFRONT単体診断モードでは、
+ * GPIO25/26/27へpinMode()もdigitalWrite()も行わない。
+ *
+ * @param index 操作対象のセンサーインデックス。
+ * @param enabled trueの場合はセンサーを起動し、falseの場合は停止する。
+ */
+void setSensorXshut(int index, bool enabled) {
+  if (!STEP_AIR_USE_XSHUT) {
+    return;
+  }
+
+  if (index < 0 || index >= SENSOR_COUNT) {
+    return;
+  }
+
+  pinMode(XSHUT_PINS[index], OUTPUT);
+  digitalWrite(
+    XSHUT_PINS[index],
+    enabled ? HIGH : LOW
+  );
+}
+
+/**
+ * @brief VL53L0X用I2C設定を現在の診断条件へ統一する。
+ *
+ * Adafruit_VL53L0X::begin() は内部でWire.begin()を呼ぶため、
+ * begin()後にも再度この設定を適用する。
+ */
+void configureI2CBus() {
+  Wire.setClock(STEP_AIR_I2C_CLOCK_HZ);
+  Wire.setTimeOut(STEP_AIR_I2C_TIMEOUT_MS);
+}
+
+/**
+ * @brief TIMEOUT発生時のI2Cライン状態をSerialへ出力する。
+ *
+ * SDA/SCLがLOWに張り付いているか、バス自体はidleなのかを実機で切り分ける。
+ *
+ * @param index TIMEOUTが発生したセンサーインデックス。
+ */
+void printI2CTimeoutDiagnostic(int index) {
+  Serial.print("VL53L0X TIMEOUT: ");
+  Serial.print(SENSOR_NAMES[index]);
+  Serial.print(" SDA=");
+  Serial.print(digitalRead(STEP_AIR_I2C_SDA_PIN));
+  Serial.print(" SCL=");
+  Serial.println(digitalRead(STEP_AIR_I2C_SCL_PIN));
+}
+
+/**
+ * @brief rangingTest()のAPIエラーを処理する。
+ *
+ * RANGE_ERRORは測距結果側の問題としてログを抑制し、
+ * TIME_OUTとCONTROL_INTERFACEはstale判定による復旧へ任せるため明示ログだけ残す。
+ *
+ * @param index エラーが発生したセンサーインデックス。
+ * @param status rangingTest()が返したAPIステータス。
+ * @return APIレベルで測距結果を参照してよい場合はtrue。
+ */
+bool handleRangingStatus(int index, VL53L0X_Error status) {
+  switch (status) {
+    case VL53L0X_ERROR_NONE:
+      return true;
+
+    case VL53L0X_ERROR_RANGE_ERROR:
+      return false;
+
+    case VL53L0X_ERROR_TIME_OUT:
+      printI2CTimeoutDiagnostic(index);
+      return false;
+
+    case VL53L0X_ERROR_CONTROL_INTERFACE:
+      Serial.print("VL53L0X I2C ERROR: ");
+      Serial.println(SENSOR_NAMES[index]);
+      return false;
+
+    default:
+      Serial.print("VL53L0X API ERROR: ");
+      Serial.print(SENSOR_NAMES[index]);
+      Serial.print(" code=");
+      Serial.println(static_cast<int>(status));
+      return false;
+  }
 }
 
 int absoluteDifference(int a, int b) {
@@ -212,8 +301,7 @@ void clearSensorReadings() {
 
 void shutdownAllSensors() {
   for (int index = 0; index < SENSOR_COUNT; ++index) {
-    pinMode(XSHUT_PINS[index], OUTPUT);
-    digitalWrite(XSHUT_PINS[index], LOW);
+    setSensorXshut(index, false);
     sensorAvailable[index] = false;
   }
 
@@ -224,8 +312,7 @@ void disableSensor(int index) {
   sensorAvailable[index] = false;
   clearOneSensorReading(index);
 
-  pinMode(XSHUT_PINS[index], OUTPUT);
-  digitalWrite(XSHUT_PINS[index], LOW);
+  setSensorXshut(index, false);
 
   Serial.print("VL53L0X disabled: ");
   Serial.println(SENSOR_NAMES[index]);
@@ -233,19 +320,19 @@ void disableSensor(int index) {
 
 bool initializeOneSensor(int index) {
   if (!sensorConfigured(index)) {
-    pinMode(XSHUT_PINS[index], OUTPUT);
-    digitalWrite(XSHUT_PINS[index], LOW);
+    setSensorXshut(index, false);
     sensorAvailable[index] = false;
     clearOneSensorReading(index);
     return false;
   }
-  pinMode(XSHUT_PINS[index], OUTPUT);
 
-  digitalWrite(XSHUT_PINS[index], LOW);
-  delay(10);
+  if (STEP_AIR_USE_XSHUT) {
+    setSensorXshut(index, false);
+    delay(10);
 
-  digitalWrite(XSHUT_PINS[index], HIGH);
-  delay(50);
+    setSensorXshut(index, true);
+    delay(50);
+  }
 
   clearOneSensorReading(index);
 
@@ -258,11 +345,12 @@ bool initializeOneSensor(int index) {
     Serial.print("VL53L0X init failed: ");
     Serial.println(SENSOR_NAMES[index]);
 
-    digitalWrite(XSHUT_PINS[index], LOW);
+    setSensorXshut(index, false);
     sensorAvailable[index] = false;
     return false;
   }
 
+  configureI2CBus();
   sensorAvailable[index] = true;
 
   Serial.print("VL53L0X ready: ");
@@ -298,9 +386,8 @@ bool initializeAllSensors() {
     if (sensorConfigured(index)) {
       initializeOneSensor(index);
     } else {
-      // 未接続設定のセンサーはXSHUT LOWのまま完全に無視する。
-      pinMode(XSHUT_PINS[index], OUTPUT);
-      digitalWrite(XSHUT_PINS[index], LOW);
+      // XSHUT有効時だけ未使用センサーを停止し、無効時はGPIOへ触れない。
+      setSensorXshut(index, false);
     }
   }
 
@@ -383,10 +470,14 @@ void readOneSensor(int index) {
     return;
   }
 
-  VL53L0X_RangingMeasurementData_t measurement;
+  VL53L0X_RangingMeasurementData_t measurement{};
 
-  // 単体テストと同じ読み方
-  sensors[index].rangingTest(&measurement, false);
+  const VL53L0X_Error status =
+    sensors[index].rangingTest(&measurement, false);
+
+  if (!handleRangingStatus(index, status)) {
+    return;
+  }
 
   if (measurement.RangeStatus == 0) {
     storeSensorReading(index, measurement.RangeMilliMeter);
@@ -486,9 +577,10 @@ void recoverI2CBus() {
 
   Wire.begin(
     STEP_AIR_I2C_SDA_PIN,
-    STEP_AIR_I2C_SCL_PIN
+    STEP_AIR_I2C_SCL_PIN,
+    STEP_AIR_I2C_CLOCK_HZ
   );
-  Wire.setClock(STEP_AIR_I2C_CLOCK_HZ);
+  configureI2CBus();
 
   delay(50);
 }
@@ -563,7 +655,7 @@ bool confirmCondition(bool condition) {
     return false;
   }
 
-  if (transitionConfirmCount < 255) {
+  if (transitionConfirmCount < COUNTER_SATURATION_VALUE) {
     ++transitionConfirmCount;
   }
 
@@ -614,7 +706,7 @@ void updateStateMachine() {
     currentState == StepAirState::STARTUP ||
     currentState == StepAirState::SENSOR_ERROR
   ) {
-    if (recoveryConfirmCount < 255) {
+    if (recoveryConfirmCount < COUNTER_SATURATION_VALUE) {
       ++recoveryConfirmCount;
     }
 
@@ -809,8 +901,8 @@ bool stepAirCtrlBegin() {
 
   applyOutputsForState(currentState);
 
-  // main.cppでWire.begin()済み。単体テストと同じ100kHzへ。
-  Wire.setClock(STEP_AIR_I2C_CLOCK_HZ);
+  // main.cppでWire.begin()済み。FRONT単体診断と同じ50 kHz/timeoutへ統一する。
+  configureI2CBus();
 
   const bool allInitialized = initializeAllSensors();
 
