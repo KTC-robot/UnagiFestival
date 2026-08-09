@@ -19,8 +19,17 @@ constexpr int JOY_ACK_INTERVAL = 10;
 
 constexpr int DRIVE_POWER_STEP = 5;
 constexpr bool ENABLE_REPLY_TO_PI = true;
-constexpr bool SHOW_RAW = false;
+constexpr bool ENABLE_RPM_TO_PI = true;
+// Raspberry Pi側へ距離センサー状態を送る。
+constexpr bool ENABLE_AIR_STATUS_TO_PI = true;
+constexpr bool SHOW_RAW = true;
 constexpr bool SHOW_JOY = true;
+
+// Raspberry Pi側で確認済みのIM920設定。
+// 自動書き換えはせず、起動時にESP32側の値を読み出して比較する。
+constexpr const char* EXPECTED_IM920_GROUP = "0001C07B";
+constexpr const char* EXPECTED_IM920_CHANNEL = "01";
+constexpr uint32_t IM920_QUERY_TIMEOUT_MS = 500;
 
 String imLine;
 String pcLine;
@@ -38,6 +47,7 @@ int8_t lastDpadY = 0;
 bool isKnownPacketType(uint8_t type) {
   return (
     type == 0x42 ||
+    type == 0x43 ||
     type == 0x44 ||
     type == 0x4A ||
     type == 0x53
@@ -104,6 +114,88 @@ void sendCommandToIm920(const String& command) {
   Serial.println(command);
 }
 
+void flushIm920Input() {
+  while (IM920.available()) {
+    IM920.read();
+  }
+}
+
+String readIm920LineBlocking(uint32_t timeoutMs) {
+  String line;
+  const uint32_t startedMs = millis();
+
+  while (millis() - startedMs < timeoutMs) {
+    while (IM920.available()) {
+      const char c = static_cast<char>(IM920.read());
+
+      if (c == '\r' || c == '\n') {
+        line.trim();
+
+        if (line.length() > 0) {
+          return utilSanitizeAsciiLine(line);
+        }
+
+        line = "";
+        continue;
+      }
+
+      line += c;
+
+      if (line.length() > 180) {
+        line = "";
+      }
+    }
+
+    delay(1);
+  }
+
+  return "";
+}
+
+String queryIm920Setting(const char* command) {
+  flushIm920Input();
+  sendCommandToIm920(command);
+
+  const String response = readIm920LineBlocking(IM920_QUERY_TIMEOUT_MS);
+
+  Serial.print("IM920 CFG ");
+  Serial.print(command);
+  Serial.print(" <- ");
+  Serial.println(response.length() > 0 ? response : "<NO RESPONSE>");
+
+  return response;
+}
+
+void printIm920Configuration() {
+  Serial.println("--- IM920 configuration check ---");
+
+  const String version = queryIm920Setting("RDVR");
+  const String id = queryIm920Setting("RDID");
+  const String node = queryIm920Setting("RDNN");
+  const String group = queryIm920Setting("RDGN");
+  const String channel = queryIm920Setting("RDCH");
+
+  (void)version;
+  (void)id;
+  (void)node;
+
+  if (group.length() > 0 && group != EXPECTED_IM920_GROUP) {
+    Serial.print("WARNING: IM920 group mismatch. expected=");
+    Serial.print(EXPECTED_IM920_GROUP);
+    Serial.print(" actual=");
+    Serial.println(group);
+  }
+
+  if (channel.length() > 0 && channel != EXPECTED_IM920_CHANNEL) {
+    Serial.print("WARNING: IM920 channel mismatch. expected=");
+    Serial.print(EXPECTED_IM920_CHANNEL);
+    Serial.print(" actual=");
+    Serial.println(channel);
+  }
+
+  Serial.println("--- IM920 configuration check end ---");
+}
+
 void handleButtonPacket(const String& hex) {
   if (hex.length() < 6) {
     return;
@@ -139,6 +231,53 @@ void handleButtonPacket(const String& hex) {
   } else if (id == 0) {
     Serial.println("STOP by CROSS button");
     chassisCtrlStop();
+  }
+}
+
+void handleControlPacket(const String& hex) {
+  if (hex.length() < 6) {
+    return;
+  }
+
+  const uint8_t commandId =
+    utilHexByteToUint8(hex.substring(2, 4));
+
+  const int8_t value =
+    utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
+
+  Serial.print("CONTROL <- ID=");
+  Serial.print(commandId);
+  Serial.print(" value=");
+  Serial.println(value);
+
+  switch (commandId) {
+    case 1:  // STOP
+      chassisCtrlStop();
+      lastDpadX = 0;
+      lastDpadY = 0;
+      im920CommSendText("CTRL STOP");
+      break;
+
+    case 2:  // EMERGENCY_STOP
+      Serial.println("EMERGENCY STOP by CONTROL command");
+      chassisCtrlStop();
+      lastDpadX = 0;
+      lastDpadY = 0;
+      im920CommSendText("CTRL ESTOP");
+      break;
+
+    case 3:  // CHANGE_POWER
+      chassisCtrlChangePower(value);
+      {
+        String reply = "CTRL PWR=";
+        reply += String(chassisCtrlGetPowerPercent());
+        im920CommSendText(reply);
+      }
+      break;
+
+    default:
+      Serial.println("CONTROL unknown command");
+      break;
   }
 }
 
@@ -255,6 +394,8 @@ void handlePayloadHex(const String& hex) {
 
   if (type == 0x42) {
     handleButtonPacket(hex);
+  } else if (type == 0x43) {
+    handleControlPacket(hex);
   } else if (type == 0x44) {
     handleDpadPacket(hex);
   } else if (type == 0x4A) {
@@ -345,13 +486,7 @@ void im920CommBegin() {
   IM920.begin(19200, SERIAL_8N1, IM920_RX, IM920_TX);
   delay(1000);
 
-  sendCommandToIm920("RDID");
-  delay(100);
-  sendCommandToIm920("RDNN");
-  delay(100);
-  sendCommandToIm920("RDGN");
-  delay(100);
-  sendCommandToIm920("RDCH");
+  printIm920Configuration();
 
   lastRxMs = millis();
 

@@ -1,5 +1,10 @@
 #include <Arduino.h>
 
+#include "can_comm.h"
+#include "chassis_ctrl.h"
+#include "im920_comm.h"
+#include "step_air_ctrl.h"
+
 HardwareSerial IM920(2);
 
 const int IM920_RX = 16;
@@ -225,13 +230,38 @@ void setup() {
 
   delay(500);
 
-  // 起動確認だけ行う。不要ならこの2行も消してよい
-  sendCommandToIm920("RDVR");
-  delay(200);
-  sendCommandToIm920("RDID");
+  //servoCtrlBegin();
+ 
+  if (!stepAirCtrlBegin()) {
+    Serial.println(
+     "WARNING: distance/air initialization failed. Valves stay OFF."
+    );
+  }
+
+  if (!canCommBegin()) {
+    Serial.println(
+      "WARNING: CAN initialization failed. Motors remain stopped."
+    );
+  }
+
+  chassisCtrlBegin();
+  im920CommBegin();
+  chassisCtrlStop();
+
+  Serial.println();
+  Serial.println("READY");
+  Serial.println();
 }
 
 void loop() {
-  updateLed();
-  readIm920Serial();
+  im920CommUpdate();
+
+  canCommReadFrames();
+  chassisCtrlUpdate();
+  canCommSendPeriodically();
+
+  stepAirCtrlUpdate();
+
+  im920CommCheckTimeout();
+  im920CommSendPeriodicStatus();
 }
