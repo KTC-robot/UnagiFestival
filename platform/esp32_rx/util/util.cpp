@@ -2,10 +2,9 @@
 
 #include <ctype.h>
 
-namespace {
-constexpr int JOY_MAX = 127;
-constexpr int JOY_DEAD = 8;
-}
+#include "constants.h"
+
+using namespace CanConfig_util;
 
 bool utilIsHexChar(char c) {
   return isxdigit(static_cast<unsigned char>(c));

@@ -27,3 +27,4 @@ bool chassisCtrlIsActive();
  * @return 前後方向コマンド。正負の向きは実機に合わせてstep_air_config.hで補正する。
  */
 float chassisCtrlGetLongitudinalCommand();
+

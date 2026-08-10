@@ -8,3 +8,4 @@ void im920CommUpdate();
 void im920CommCheckTimeout();
 void im920CommSendPeriodicStatus();
 void im920CommSendText(const String& text);
+
