@@ -1,109 +1,146 @@
 #include "i2c_bus.hpp"
 
-#include "../step_air_config.h"
+#include "constants.h"
 
 #include <Wire.h>
 
-namespace {
-bool writeTcaControlByte(uint8_t controlByte, const char* failureLabel) {
-  Wire.beginTransmission(STEP_AIR_TCA9548A_ADDRESS);
-  Wire.write(controlByte);
+void i2cBusApplySettings()
+{
+    Wire.setClock(LASER_SENSOR_I2C_CLOCK_HZ);
+    Wire.setTimeOut(LASER_SENSOR_I2C_TIMEOUT_MS);
+}
 
-  const uint8_t wireError = Wire.endTransmission();
+bool i2cBusDisableAllTcaChannels()
+{
+    Wire.beginTransmission(
+        LASER_SENSOR_TCA9548A_ADDRESS
+    );
 
-  if (wireError == STEP_AIR_I2C_WIRE_ERROR_NONE) {
+    Wire.write(0x00);
+
+    const uint8_t result =
+        Wire.endTransmission(true);
+
+    if (result != 0) {
+        Serial.print(
+            "TCA9548A 全CH無効化失敗 result="
+        );
+        Serial.println(result);
+
+        return false;
+    }
+
     return true;
-  }
-
-  Serial.print(failureLabel);
-  Serial.print(" WireError=");
-  Serial.println(wireError);
-  return false;
 }
 
-/**
- * @brief TCA9548Aへ全チャネル無効control byteを書き込む。
- *
- * 0-byte probeではなく実際の1 byte書き込みで存在確認も兼ねる。
- *
- * @return TCA9548Aが書き込みにACKした場合true。
- */
-bool initializeMultiplexer() {
-  if (!writeTcaControlByte(
-        STEP_AIR_TCA9548A_ALL_CHANNELS_DISABLED,
-        "TCA9548A init failed:"
-      )) {
-    Serial.print("TCA9548A not found: address=0x");
-    Serial.println(STEP_AIR_TCA9548A_ADDRESS, HEX);
-    return false;
-  }
+bool i2cBusBegin()
+{
+    Wire.end();
 
-  Serial.print("TCA9548A ready: address=0x");
-  Serial.println(STEP_AIR_TCA9548A_ADDRESS, HEX);
-  return true;
+    delay(
+        LASER_SENSOR_I2C_RESTART_DELAY_MS
+    );
+
+    const bool result = Wire.begin(
+        LASER_SENSOR_I2C_SDA_PIN,
+        LASER_SENSOR_I2C_SCL_PIN,
+        LASER_SENSOR_I2C_CLOCK_HZ
+    );
+
+    if (!result) {
+        Serial.println(
+            "I2C初期化失敗"
+        );
+
+        return false;
+    }
+
+    i2cBusApplySettings();
+
+    Serial.print("I2C初期化成功 SDA=");
+    Serial.print(LASER_SENSOR_I2C_SDA_PIN);
+    Serial.print(" SCL=");
+    Serial.print(LASER_SENSOR_I2C_SCL_PIN);
+    Serial.print(" clock=");
+    Serial.print(LASER_SENSOR_I2C_CLOCK_HZ);
+    Serial.println("Hz");
+
+    // TCA9548A存在確認
+    Wire.beginTransmission(
+        LASER_SENSOR_TCA9548A_ADDRESS
+    );
+
+    const uint8_t probeResult =
+        Wire.endTransmission(true);
+
+    if (probeResult != 0) {
+        Serial.print(
+            "TCA9548A応答なし result="
+        );
+        Serial.println(probeResult);
+
+        return false;
+    }
+
+    Serial.println(
+        "TCA9548A 接続成功"
+    );
+
+    return i2cBusDisableAllTcaChannels();
 }
-}  // namespace
 
-void i2cBusApplySettings() {
-  Wire.setClock(STEP_AIR_I2C_CLOCK_HZ);
-  Wire.setTimeOut(STEP_AIR_I2C_TIMEOUT_MS);
+bool i2cBusRestart()
+{
+    Serial.println(
+        "I2Cバスを再初期化します"
+    );
+
+    return i2cBusBegin();
 }
 
-bool i2cBusRestart() {
-  const bool endOk = Wire.end();
-  Serial.print("Wire.end(): ");
-  Serial.println(endOk ? "OK" : "FAILED");
+bool i2cBusSelectTcaChannel(uint8_t channel)
+{
+    if (
+        channel >=
+        LASER_SENSOR_TCA9548A_CHANNEL_COUNT
+    ) {
+        return false;
+    }
 
-  delay(50);
+    Wire.beginTransmission(
+        LASER_SENSOR_TCA9548A_ADDRESS
+    );
 
-  const bool beginOk = Wire.begin(
-    STEP_AIR_I2C_SDA_PIN,
-    STEP_AIR_I2C_SCL_PIN,
-    STEP_AIR_I2C_CLOCK_HZ
-  );
-  Serial.print("Wire.begin(): ");
-  Serial.println(beginOk ? "OK" : "FAILED");
+    Wire.write(
+        static_cast<uint8_t>(
+            1U << channel
+        )
+    );
 
-  if (!beginOk) {
-    return false;
-  }
+    const uint8_t result =
+        Wire.endTransmission(true);
 
-  i2cBusApplySettings();
-  return initializeMultiplexer();
-}
+    if (result != 0) {
+        return false;
+    }
 
-bool i2cBusBegin() {
-  return i2cBusRestart();
-}
+    delay(
+        LASER_SENSOR_CHANNEL_SETTLE_MS
+    );
 
-bool i2cBusSelectTcaChannel(uint8_t channel) {
-  if (channel >= STEP_AIR_TCA9548A_CHANNEL_COUNT) {
-    Serial.print("TCA9548A channel select failed: CH=");
-    Serial.print(channel);
-    Serial.println(" out of range");
-    return false;
-  }
-
-  Wire.beginTransmission(STEP_AIR_TCA9548A_ADDRESS);
-  Wire.write(static_cast<uint8_t>(1U << channel));
-
-  const uint8_t wireError = Wire.endTransmission();
-
-  if (wireError == STEP_AIR_I2C_WIRE_ERROR_NONE) {
     return true;
-  }
-
-  Serial.print("TCA9548A channel select failed: CH=");
-  Serial.print(channel);
-  Serial.print(" WireError=");
-  Serial.println(wireError);
-  return false;
 }
 
-int i2cBusReadSda() {
-  return digitalRead(STEP_AIR_I2C_SDA_PIN);
+int i2cBusReadSda()
+{
+    return digitalRead(
+        LASER_SENSOR_I2C_SDA_PIN
+    );
 }
 
-int i2cBusReadScl() {
-  return digitalRead(STEP_AIR_I2C_SCL_PIN);
+int i2cBusReadScl()
+{
+    return digitalRead(
+        LASER_SENSOR_I2C_SCL_PIN
+    );
 }
