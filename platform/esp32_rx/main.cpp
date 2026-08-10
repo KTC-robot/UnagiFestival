@@ -3,7 +3,8 @@
 #include "can_comm.h"
 #include "chassis_ctrl.h"
 #include "im920_comm.h"
-#include "step_air_ctrl.h"
+#include "laser_sensor/laser_sensor_ctrl.hpp"
+#include "relay/relay_ctrl.hpp"
 
 HardwareSerial IM920(2);
 
@@ -230,19 +231,17 @@ void setup() {
 
   delay(500);
 
-  //servoCtrlBegin();
- 
-  if (!stepAirCtrlBegin()) {
-    Serial.println(
-     "WARNING: distance/air initialization failed. Valves stay OFF."
-    );
-  }
+  relayCtrlBegin();
 
   if (!canCommBegin()) {
     Serial.println(
       "WARNING: CAN initialization failed. Motors remain stopped."
     );
   }
+
+  if (!laserSensorCtrlBegin()) {
+        Serial.println("WARNING: laser sensor initialization failed.");
+    }
 
   chassisCtrlBegin();
   im920CommBegin();
@@ -260,7 +259,7 @@ void loop() {
   chassisCtrlUpdate();
   canCommSendPeriodically();
 
-  stepAirCtrlUpdate();
+  laserSensorCtrlUpdate();
 
   im920CommCheckTimeout();
   im920CommSendPeriodicStatus();
