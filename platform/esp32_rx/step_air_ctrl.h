@@ -12,16 +12,17 @@ enum class StepAirState {
 };
 
 /**
- * @brief 段差エア制御のGPIO、I2C、VL53L0Xを初期化する。
+ * @brief 段差エア制御の上位状態と下位制御モジュールを初期化する。
  *
- * 初期化失敗時もバルブは安全側のOFFに維持する。
+ * リレー制御を安全側OFFで開始し、センサー制御層へVL53L0X初期化を依頼する。
+ * 初期化失敗時もバルブは安全側OFFに維持する。
  *
  * @return 有効化された全VL53L0Xの初期化に成功した場合はtrue。
  */
 bool stepAirCtrlBegin();
 
 /**
- * @brief VL53L0X測距、再初期化、段差エア状態遷移を周期更新する。
+ * @brief センサー制御層の更新結果を使って段差エア状態遷移を周期更新する。
  */
 void stepAirCtrlUpdate();
 

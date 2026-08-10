@@ -47,6 +47,12 @@ constexpr uint8_t STEP_AIR_TCA9548A_ADDRESS = 0x70;
 // TCA9548Aは8チャネル構成。複数チャネル同時有効化は0x29衝突のため禁止する。
 constexpr uint8_t STEP_AIR_TCA9548A_CHANNEL_COUNT = 8;
 
+// 起動時とI2C復旧時は全チャネルを切断してから、対象センサーの1チャネルだけを選ぶ。
+constexpr uint8_t STEP_AIR_TCA9548A_ALL_CHANNELS_DISABLED = 0x00;
+
+// Arduino Wire.endTransmission() の成功コード。
+constexpr uint8_t STEP_AIR_I2C_WIRE_ERROR_NONE = 0;
+
 // 各VL53L0XはTCA9548Aで物理的に分離するため、全台デフォルトアドレス0x29を使う。
 constexpr uint8_t STEP_AIR_VL53L0X_ADDRESS = 0x29;
 
@@ -64,8 +70,8 @@ constexpr uint8_t STEP_AIR_REAR_SENSOR_CHANNEL = 2;
 // Test 3: FRONT + CENTER + REAR を true
 // ============================================================
 constexpr bool STEP_AIR_USE_FRONT_SENSOR = true;
-constexpr bool STEP_AIR_USE_CENTER_SENSOR = true;
-constexpr bool STEP_AIR_USE_REAR_SENSOR = true;
+constexpr bool STEP_AIR_USE_CENTER_SENSOR = false;
+constexpr bool STEP_AIR_USE_REAR_SENSOR = false;
 
 static_assert(
   STEP_AIR_FRONT_SENSOR_CHANNEL < STEP_AIR_TCA9548A_CHANNEL_COUNT &&
@@ -113,6 +119,10 @@ constexpr uint32_t STEP_AIR_SENSOR_REINIT_INTERVAL_MS = 5000;
 
 // TIMEOUT/I2C/重大APIエラーが連続した場合は、時間経過を待たずに再初期化対象にする。
 constexpr uint8_t STEP_AIR_SENSOR_MAX_ERROR_COUNT = 5;
+
+// 確認カウンタやエラーカウンタの飽和値。
+// uint8_tの上限で止め、長時間運転時の桁あふれを避ける。
+constexpr uint8_t STEP_AIR_COUNTER_SATURATION_VALUE = 255;
 
 
 // 補正後の測距値として採用する範囲。
