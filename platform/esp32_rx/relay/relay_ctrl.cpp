@@ -1,6 +1,5 @@
 #include "relay_ctrl.hpp"
-
-#include "../step_air_config.h"
+#include "constants.h"
 
 #include <Arduino.h>
 
@@ -10,8 +9,8 @@ bool rearValveOn = false;
 }  // namespace
 
 bool relayCtrlBegin() {
-  pinMode(STEP_AIR_FRONT_VALVE_PIN, OUTPUT);
-  pinMode(STEP_AIR_REAR_VALVE_PIN, OUTPUT);
+  pinMode(RELAY_FRONT_VALVE_PIN, OUTPUT);
+  pinMode(RELAY_REAR_VALVE_PIN, OUTPUT);
 
   relayCtrlForceOff();
   return true;
@@ -24,11 +23,11 @@ void relayCtrlSetFront(bool on) {
 
   frontValveOn = on;
   digitalWrite(
-    STEP_AIR_FRONT_VALVE_PIN,
-    on ? STEP_AIR_VALVE_ON_LEVEL : STEP_AIR_VALVE_OFF_LEVEL
+    RELAY_FRONT_VALVE_PIN,
+    on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
   );
 
-  Serial.print("AIR FRONT VALVE -> ");
+  Serial.print("RELAY FRONT VALVE -> ");
   Serial.println(on ? "ON (extend/down)" : "OFF (retract/up)");
 }
 
@@ -39,11 +38,11 @@ void relayCtrlSetRear(bool on) {
 
   rearValveOn = on;
   digitalWrite(
-    STEP_AIR_REAR_VALVE_PIN,
-    on ? STEP_AIR_VALVE_ON_LEVEL : STEP_AIR_VALVE_OFF_LEVEL
+    RELAY_REAR_VALVE_PIN,
+    on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
   );
 
-  Serial.print("AIR REAR VALVE -> ");
+  Serial.print("RELAY REAR VALVE -> ");
   Serial.println(on ? "ON (extend/down)" : "OFF (retract/up)");
 }
 
@@ -59,6 +58,6 @@ void relayCtrlForceOff() {
   frontValveOn = false;
   rearValveOn = false;
 
-  digitalWrite(STEP_AIR_FRONT_VALVE_PIN, STEP_AIR_VALVE_OFF_LEVEL);
-  digitalWrite(STEP_AIR_REAR_VALVE_PIN, STEP_AIR_VALVE_OFF_LEVEL);
+  digitalWrite(RELAY_FRONT_VALVE_PIN, RELAY_OFF_LEVEL);
+  digitalWrite(RELAY_REAR_VALVE_PIN, RELAY_OFF_LEVEL);
 }
