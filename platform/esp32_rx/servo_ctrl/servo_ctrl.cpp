@@ -8,6 +8,8 @@ using namespace CanConfig_servo_ctrl;
 
 namespace {
 
+Adafruit_PWMServoDriver servoDriver(PCA9685_ADDRESS);
+
 bool servoOutputActive[SERVO_CHANNEL_COUNT] = {};
 uint8_t servoLastAngle[SERVO_CHANNEL_COUNT] = {
   90, 90, 90, 90,
