@@ -1,8 +1,8 @@
 #include <Arduino.h>
 
-#include "can_comm.h"
-#include "chassis_ctrl.h"
-#include "im920_comm.h"
+#include "can_comm/can_comm.h"
+#include "chassis_ctrl/chassis_ctrl.h"
+#include "im920_comm/im920_comm.h"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
 
@@ -19,14 +19,10 @@ String imInput = "";
 bool ledOn = false;
 unsigned long ledOffAt = 0;
 
-// 16進数1文字かどうかを判定する
 bool isHexChar(char c) {
   return isxdigit((unsigned char)c);
 }
 
-// 文字列全体が偶数桁のHEXか判定する
-// 例: 4C45445F4F4E -> true
-// 例: HELLO -> false
 bool isPureEvenHexString(const String& text) {
   if (text.length() == 0 || text.length() % 2 != 0) {
     return false;
@@ -41,7 +37,6 @@ bool isPureEvenHexString(const String& text) {
   return true;
 }
 
-// IM920からの行頭に混ざる制御文字を除去する
 String sanitizeAsciiLine(const String& line) {
   String cleaned = "";
 
@@ -57,7 +52,6 @@ String sanitizeAsciiLine(const String& line) {
   return cleaned;
 }
 
-// 例: 4C,45,44,5F,4F,4E -> LED_ON
 String decodeCommaSeparatedHex(String payload) {
   String text = "";
   int start = 0;
@@ -93,7 +87,6 @@ String decodeCommaSeparatedHex(String payload) {
   return text;
 }
 
-// 例: 4C45445F4F4E -> LED_ON
 String decodeContinuousHex(String payload) {
   payload.trim();
 
@@ -115,7 +108,6 @@ String decodeContinuousHex(String payload) {
   return text;
 }
 
-// IM920のデータ部を文字列に変換する
 String decodePayload(String payload) {
   payload.trim();
 
@@ -123,23 +115,19 @@ String decodePayload(String payload) {
     return "";
   }
 
-  // DCIO受信例: 4C,45,44,5F,4F,4E
   if (payload.indexOf(',') >= 0) {
     return decodeCommaSeparatedHex(payload);
   }
 
-  // DCIO受信例: 4C45445F4F4E
   String decoded = decodeContinuousHex(payload);
 
   if (decoded.length() > 0) {
     return decoded;
   }
 
-  // ECIO受信例: LED_ON
   return payload;
 }
 
-// 受信行から ":" より後ろのデータ部を取り出す
 String extractPayloadText(String line) {
   line.trim();
 
@@ -175,7 +163,6 @@ void handleIm920Line(String rawLine) {
   Serial.print("IM920 RX RAW: ");
   Serial.println(line);
 
-  // 起動時確認コマンドなどの応答は処理しない
   if (line == "OK" || line == "NG" || line.startsWith("IM920")) {
     return;
   }
@@ -240,8 +227,8 @@ void setup() {
   }
 
   if (!laserSensorCtrlBegin()) {
-        Serial.println("WARNING: laser sensor initialization failed.");
-    }
+    Serial.println("WARNING: laser sensor initialization failed.");
+  }
 
   chassisCtrlBegin();
   im920CommBegin();
