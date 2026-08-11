@@ -1,7 +1,7 @@
 #include "can_comm.h"
 
 #include <driver/twai.h>
-#include "constants.h"
+#include "can_comm/constants.h"
 
 using namespace CanConfig_can_comm;
 

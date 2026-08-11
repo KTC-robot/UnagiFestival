@@ -1,8 +1,8 @@
-#include "laser_sensor_device.hpp"
+#include "laser_sensor/laser_sensor_device.hpp"
 
-#include "constants.h"
-#include "../i2c/i2c_bus.hpp"
-#include "laser_sensor_state.hpp"
+#include "laser_sensor/constants.h"
+#include "i2c/i2c_bus.hpp"
+#include "laser_sensor/laser_sensor_state.hpp"
 
 #include <Adafruit_VL53L0X.h>
 #include <Wire.h>

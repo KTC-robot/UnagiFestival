@@ -2,7 +2,7 @@
 
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
-#include "constants.h"
+#include "servo_ctrl/constants.h"
 
 using namespace CanConfig_servo_ctrl;
 

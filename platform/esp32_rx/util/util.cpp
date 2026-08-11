@@ -2,7 +2,7 @@
 
 #include <ctype.h>
 
-#include "constants.h"
+#include "util/constants.h"
 
 using namespace CanConfig_util;
 
