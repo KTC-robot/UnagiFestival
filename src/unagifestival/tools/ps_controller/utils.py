@@ -1,15 +1,9 @@
-from typing import Protocol
-
 from unagifestival.tools.ps_controller.config import (
     AXIS_NORMALIZED_CENTER,
     AXIS_NORMALIZED_MAX,
     AXIS_NORMALIZED_MIN,
 )
-
-
-class AxisInfo(Protocol):
-    min: int
-    max: int
+from unagifestival.tools.ps_controller.models import AxisInfo
 
 
 def clamp_value(value: float, minimum: float, maximum: float) -> float:
@@ -26,7 +20,8 @@ def normalize_absolute_axis(value: float, axis_info: AxisInfo | None) -> float:
     """アナログスティックなどの絶対軸の生値を -1.0 から 1.0 の範囲に正規化する.中央値が 0.0 となる."""
     if axis_info is None:
         return AXIS_NORMALIZED_CENTER
-    minimum_value, maximum_value = axis_info.min, axis_info.max
+    minimum_value = axis_info.minimum
+    maximum_value = axis_info.maximum
     if maximum_value == minimum_value:
         return AXIS_NORMALIZED_CENTER
     center_value = (minimum_value + maximum_value) / 2.0

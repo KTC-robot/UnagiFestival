@@ -14,8 +14,8 @@ constexpr int LASER_SENSOR_REAR = 2;
 
 constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
     true,   // FRONT  CH0
-    false,  // CENTER CH1
-    false   // REAR   CH2
+    true,  // CENTER CH1
+    true   // REAR   CH2
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {

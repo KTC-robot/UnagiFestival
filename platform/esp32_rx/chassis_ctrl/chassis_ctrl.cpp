@@ -309,27 +309,16 @@ void chassisCtrlUpdate() {
   }
 }
 
-void chassisCtrlSetFromJoy(
-  int8_t lx,
-  int8_t ly,
-  int8_t rx,
-  int8_t dpadX,
-  int8_t dpadY
+void chassisCtrlSetDriveCommand(
+  int8_t vx,
+  int8_t vy,
+  int8_t wz
 ) {
-  float vx = 0.0f;
-  float vy = 0.0f;
-  float wz = 0.0f;
-
-  if (dpadX != 0 || dpadY != 0) {
-    vx = static_cast<float>(dpadY);
-    vy = static_cast<float>(dpadX);
-  } else {
-    vx = utilJoyToFloat(ly);
-    vy = utilJoyToFloat(lx);
-    wz = utilJoyToFloat(rx);
-  }
-
-  setChassisSpringLogic(vx, vy, wz);
+  setChassisSpringLogic(
+    utilCommandToFloat(vx),
+    utilCommandToFloat(vy),
+    utilCommandToFloat(wz)
+  );
 }
 
 void chassisCtrlStop() {

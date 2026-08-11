@@ -30,6 +30,12 @@ wheels = [
 ]
 
 [[package]]
+name = "evdev"
+version = "1.9.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/f5/397b61091120a9ca5001041dd7bf76c385b3bfd67a0e5bcb74b852bd22a4/evdev-1.9.3.tar.gz", hash = "sha256:2c140e01ac8437758fa23fe5c871397412461f42d421aa20241dc8fe8cfccbc9", size = 32723, upload-time = "2026-02-05T21:54:24.987Z" }
+
+[[package]]
 name = "filelock"
 version = "3.29.0"
 source = { registry = "https://pypi.org/simple" }
@@ -45,6 +51,17 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/52/63/51723b5f116cc04b061cb6f5a561790abf249d25931d515cd375e063e0f4/identify-2.6.19.tar.gz", hash = "sha256:6be5020c38fcb07da56c53733538a3081ea5aa70d36a156f83044bfbf9173842", size = 99567, upload-time = "2026-04-17T18:39:50.265Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/94/84/d9273cd09688070a6523c4aee4663a8538721b2b755c4962aafae0011e72/identify-2.6.19-py2.py3-none-any.whl", hash = "sha256:20e6a87f786f768c092a721ad107fc9df0eb89347be9396cadf3f4abbd1fb78a", size = 99397, upload-time = "2026-04-17T18:39:49.221Z" },
+]
+
+[[package]]
+name = "lgpio"
+version = "0.2.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/33/26ec2e8049eaa2f077bf23a12dc61ca559fbfa7bea0516bf263d657ae275/lgpio-0.2.2.0.tar.gz", hash = "sha256:11372e653b200f76a0b3ef8a23a0735c85ec678a9f8550b9893151ed0f863fff", size = 90087, upload-time = "2024-03-29T21:59:55.901Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/73/e56c9afb845df53492d42bdea01df9895272bccfdd5128f34719c3a07990/lgpio-0.2.2.0-cp312-cp312-linux_armv7l.whl", hash = "sha256:6c65ac42e878764d04a71ed12fe6d46089b36e9e8127722bf29bb2e4bc91de22", size = 383956, upload-time = "2024-03-29T22:00:47.315Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/1c/becd00f66d2c65feed9a668ff9d91732394cb6baba7bec505d55de0e30c9/lgpio-0.2.2.0-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:d907db79292c721c605af08187385ddb3b7af09907e1ffca56cf0cd6558ace0a", size = 366058, upload-time = "2024-04-01T22:49:47.615Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/7a/e3b4e5225c9792c4092b2cc07504746acbe62d0a8e4cb023bdf65f6430cf/lgpio-0.2.2.0-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:2aadff092f642fcdada8457c158f87259dfda3a89ec19bae0b99ff22b34aac4b", size = 372103, upload-time = "2024-04-13T14:08:16.351Z" },
 ]
 
 [[package]]
@@ -183,6 +200,18 @@ wheels = [
 ]
 
 [[package]]
+name = "rpi-lgpio"
+version = "0.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lgpio" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6e/6d/7b6cb0def16abda6af89d16a3363d4036501bf042f9c67668aad3b34927f/rpi_lgpio-0.6.tar.gz", hash = "sha256:84579b11d543bb8abdddc1e10fcd6bdc2819e5897be72d6949a2b044d71fb73e", size = 12723, upload-time = "2024-05-11T16:09:29.463Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/a9/06b843528e47ded0dd276537e9c56e7aec7c841b3b2749274e7d8121dab5/rpi_lgpio-0.6-py3-none-any.whl", hash = "sha256:0930b6e0ffbfbeee9366fbfa5038d29a7606be96a5229d570b1f81be8f776777", size = 11880, upload-time = "2024-05-11T16:09:27.75Z" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.15.12"
 source = { registry = "https://pypi.org/simple" }
@@ -205,6 +234,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/f9/0ae446942c846b8266059ad8a30702a35afae55f5cdc54c5adf8d7afdc27/ruff-0.15.12-py3-none-win32.whl", hash = "sha256:d0185894e038d7043ba8fd6aee7499ece6462dc0ea9f1e260c7451807c714c20", size = 10657277, upload-time = "2026-04-24T18:17:18.591Z" },
     { url = "https://files.pythonhosted.org/packages/33/f1/9614e03e1cdcbf9437570b5400ced8a720b5db22b28d8e0f1bda429f660d/ruff-0.15.12-py3-none-win_amd64.whl", hash = "sha256:c87a162d61ab3adca47c03f7f717c68672edec7d1b5499e652331780fe74950d", size = 11837758, upload-time = "2026-04-24T18:17:00.113Z" },
     { url = "https://files.pythonhosted.org/packages/c0/98/6beb4b351e472e5f4c4613f7c35a5290b8be2497e183825310c4c3a3984b/ruff-0.15.12-py3-none-win_arm64.whl", hash = "sha256:a538f7a82d061cee7be55542aca1d86d1393d55d81d4fcc314370f4340930d4f", size = 11120821, upload-time = "2026-04-24T18:16:57.979Z" },
+]
+
+[[package]]
+name = "smbus2"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/87/37/b3f7b501502c4915ba3819d1dc277bf3f5fae4a9d067caa4f502aaddd889/smbus2-0.6.1.tar.gz", hash = "sha256:2b043372abf8f6029a632c3aab36b641c5d5872b1cbad599fc68e17ac4fd90a5", size = 17274, upload-time = "2026-04-09T20:37:54.821Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/f2/c78a68bd739ac8fc608747cff73a4db3b19f3135658ed4e64374f6425cbf/smbus2-0.6.1-py2.py3-none-any.whl", hash = "sha256:650feeb27ca0ed58b07db4c10201c2a662c41305b7bf6e5fab9d888056f48180", size = 11767, upload-time = "2026-04-09T20:37:53.728Z" },
 ]
 
 [[package]]
@@ -296,7 +334,10 @@ name = "unagifestival"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "evdev" },
     { name = "pyserial" },
+    { name = "rpi-lgpio" },
+    { name = "smbus2" },
 ]
 
 [package.dev-dependencies]
@@ -309,7 +350,12 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pyserial", specifier = ">=3.5" }]
+requires-dist = [
+    { name = "evdev", specifier = ">=1.9.3" },
+    { name = "pyserial", specifier = ">=3.5" },
+    { name = "rpi-lgpio", specifier = ">=0.6" },
+    { name = "smbus2", specifier = ">=0.6.1" },
+]
 
 [package.metadata.requires-dev]
 dev = [

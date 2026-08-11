@@ -6,26 +6,26 @@ from datetime import UTC, datetime
 
 from unagifestival.tools.ps_controller.device import (
     find_controller,
-    get_absolute_axis_info,
-    wait_for_input_ready,
 )
-from unagifestival.tools.ps_controller.enums import EventType
+from unagifestival.tools.ps_controller.enums import AxisInputEvent, ButtonEvent
 from unagifestival.tools.ps_controller.handler import RobotHandler
+from unagifestival.tools.ps_controller.models import AxisValueMap, ControllerState
 
 
 def setup_logger() -> logging.Logger:
-    """
-    ロガーの初期設定。
+    """ロガーを初期化する.
+
     実行日時をファイル名にしてログを保存する。
     """
-    logger = logging.getLogger("teensy_log")
+    logger = logging.getLogger("unagi_log")
     logger.setLevel(logging.INFO)
 
     # 多重登録防止
     if logger.handlers:
         return logger
 
-    log_filename = f"teensy_log_{datetime.now(UTC).astimezone().strftime('%Y%m%d_%H%M%S')}.log"
+    timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"unagi_log_{timestamp}.log"
 
     file_handler = logging.FileHandler(log_filename)
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
@@ -44,47 +44,43 @@ def main() -> None:
     logger.info("=== CONTROLLER START ===")
 
     dev = find_controller()
-    info = get_absolute_axis_info(dev)
+    if dev is None:
+        logger.error("コントローラーが見つからないため終了します。")
+        return
+
+    axis_info = dev.axis_info
 
     logger.info("Controller: %s %s", dev.path, dev.name)
 
-    raw = {}
+    axis_values: AxisValueMap = {}
 
-    for code, axis_info in info.items():
-        if axis_info is not None and axis_info.value is not None:
-            raw[code] = axis_info.value
-        elif axis_info is not None:
-            raw[code] = (axis_info.min + axis_info.max) // 2
+    for code, info in axis_info.items():
+        if info.value is not None:
+            axis_values[code] = info.value
         else:
-            raw[code] = 0
+            axis_values[code] = (info.minimum + info.maximum) // 2
+
+    state = ControllerState(axis_values=axis_values, axis_info=axis_info)
 
     handler = RobotHandler()
     handler.enter()
 
     last_send = 0.0
 
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(OSError):
         dev.grab()
 
     try:
         while True:
             now = time.time()
 
-            readable, _, _ = wait_for_input_ready(
-                [dev.fd],
-                timeout_seconds=0.005,
-            )
+            for event in dev.read_events(timeout_seconds=0.005):
+                if isinstance(event, AxisInputEvent):
+                    handler.handle_axis(event, state)
+                elif isinstance(event, ButtonEvent):
+                    handler.handle_button(event)
 
-            if readable:
-                for ev in dev.read():
-                    if ev.type == EventType.ABS:
-                        raw[ev.code] = ev.value
-                        handler.handle_abs(ev.code, ev.value)
-
-                    elif ev.type == EventType.KEY:
-                        handler.handle_key(ev.code, ev.value)
-
-            last_send = handler.tick(now, raw, info, last_send)
+            last_send = handler.tick(now, state, last_send)
 
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt")
@@ -92,7 +88,7 @@ def main() -> None:
     finally:
         handler.exit()
 
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             dev.ungrab()
 
         logger.info("=== CONTROLLER END ===")

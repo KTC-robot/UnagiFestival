@@ -1,0 +1,9 @@
+class SMBus:
+    def __init__(self, bus: int) -> None: ...
+    def read_byte(self, address: int) -> int: ...
+    def write_i2c_block_data(
+        self,
+        address: int,
+        command: int,
+        values: list[int],
+    ) -> None: ...
