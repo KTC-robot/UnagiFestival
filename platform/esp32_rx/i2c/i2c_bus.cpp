@@ -4,14 +4,60 @@
 
 #include <Wire.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
+namespace {
+SemaphoreHandle_t i2cMutex = nullptr;
+
+bool ensureMutex() {
+    if (i2cMutex == nullptr) {
+        i2cMutex = xSemaphoreCreateRecursiveMutex();
+    }
+    return i2cMutex != nullptr;
+}
+}
+
+I2cBusLockGuard::I2cBusLockGuard()
+    : locked_(i2cBusLock()) {}
+
+I2cBusLockGuard::~I2cBusLockGuard() {
+    if (locked_) {
+        i2cBusUnlock();
+    }
+}
+
+bool I2cBusLockGuard::locked() const {
+    return locked_;
+}
+
+bool i2cBusLock() {
+    return ensureMutex() &&
+        xSemaphoreTakeRecursive(i2cMutex, portMAX_DELAY) == pdTRUE;
+}
+
+void i2cBusUnlock() {
+    if (i2cMutex != nullptr) {
+        xSemaphoreGiveRecursive(i2cMutex);
+    }
+}
+
 void i2cBusApplySettings()
 {
+    I2cBusLockGuard lock;
+    if (!lock.locked()) {
+        return;
+    }
     Wire.setClock(LASER_SENSOR_I2C_CLOCK_HZ);
     Wire.setTimeOut(LASER_SENSOR_I2C_TIMEOUT_MS);
 }
 
 bool i2cBusDisableAllTcaChannels()
 {
+    I2cBusLockGuard lock;
+    if (!lock.locked()) {
+        return false;
+    }
     Wire.beginTransmission(
         LASER_SENSOR_TCA9548A_ADDRESS
     );
@@ -35,6 +81,10 @@ bool i2cBusDisableAllTcaChannels()
 
 bool i2cBusBegin()
 {
+    I2cBusLockGuard lock;
+    if (!lock.locked()) {
+        return false;
+    }
     Wire.end();
 
     delay(
@@ -100,6 +150,10 @@ bool i2cBusRestart()
 
 bool i2cBusSelectTcaChannel(uint8_t channel)
 {
+    I2cBusLockGuard lock;
+    if (!lock.locked()) {
+        return false;
+    }
     if (
         channel >=
         LASER_SENSOR_TCA9548A_CHANNEL_COUNT
@@ -129,6 +183,17 @@ bool i2cBusSelectTcaChannel(uint8_t channel)
     );
 
     return true;
+}
+
+bool i2cBusProbeDevice(uint8_t address)
+{
+    I2cBusLockGuard lock;
+    if (!lock.locked()) {
+        return false;
+    }
+
+    Wire.beginTransmission(address);
+    return Wire.endTransmission(true) == 0;
 }
 
 int i2cBusReadSda()

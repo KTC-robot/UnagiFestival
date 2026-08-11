@@ -4,12 +4,13 @@
 #include "../i2c/i2c_bus.hpp"
 #include "laser_sensor_device.hpp"
 #include "laser_sensor_state.hpp"
+#include "servo_ctrl/servo_ctrl.h"
 
 #include <Arduino.h>
 
 namespace laserSensorInternal {
 namespace {
-uint32_t lastInitializationAttemptMs = 0;
+uint32_t lastInitializationAttemptMs[LASER_SENSOR_COUNT] = {};
 uint32_t lastSensorReadMs = 0;
 int nextSensorToRead = 0;
 
@@ -42,66 +43,82 @@ void markStaleSensorsUnavailable() {
       continue;
     }
 
-    const uint32_t referenceMs =
-      sensorHasValue(index)
-        ? sensorLastGoodMs(index)
-        : lastInitializationAttemptMs;
-
-    if (now - referenceMs <= LASER_SENSOR_REINIT_AFTER_MS) {
+    if (
+      !sensorHasValue(index) ||
+      now - sensorLastGoodMs(index) <= LASER_SENSOR_STALE_MS
+    ) {
       continue;
     }
 
     Serial.print("VL53L0X stale: ");
     Serial.println(LASER_SENSOR_NAMES[index]);
-    disableSensor(index);
+    invalidateSensorReading(index);
   }
 }
 
 void retryMissingSensorsIfDue() {
   const uint32_t now = millis();
 
-  if (
-    now - lastInitializationAttemptMs <
-    LASER_SENSOR_REINIT_INTERVAL_MS
-  ) {
-    return;
-  }
-
-  bool missingEnabledSensor = false;
-
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
-    if (sensorConfigured(index) && !sensorAvailable(index)) {
-      missingEnabledSensor = true;
-      break;
+    if (
+      !sensorConfigured(index) ||
+      sensorAvailable(index) ||
+      now - lastInitializationAttemptMs[index] <
+        LASER_SENSOR_REINIT_INTERVAL_MS
+    ) {
+      continue;
     }
-  }
 
-  if (!missingEnabledSensor) {
+    lastInitializationAttemptMs[index] = now;
+    Serial.print("VL53L0X retry: ");
+    Serial.println(LASER_SENSOR_NAMES[index]);
+
+    if (initializeOneSensor(index)) {
+      Serial.print("VL53L0X retry success: ");
+    } else {
+      Serial.print("VL53L0X retry failed: ");
+    }
+    Serial.println(LASER_SENSOR_NAMES[index]);
+  }
+}
+
+void recoverI2cBusIfRequired() {
+  if (!busRecoveryRequired()) {
     return;
   }
 
-  lastInitializationAttemptMs = now;
-
-  Serial.println(
-    "VL53L0X 再初期化: I2CバスとTCA9548Aを再起動"
-  );
+  clearBusRecoveryRequest();
+  Serial.println("I2C BUS RECOVERY START");
 
   if (!i2cBusRestart()) {
+    Serial.println("I2C BUS RECOVERY FAILED");
     return;
   }
 
+  servoCtrlRestoreAfterI2cRecovery();
+  markAllSensorsUnavailable();
+
+  const uint32_t now = millis();
+
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
-    if (sensorConfigured(index) && !sensorAvailable(index)) {
+    if (sensorConfigured(index)) {
+      lastInitializationAttemptMs[index] = now;
       initializeOneSensor(index);
     }
   }
+
+  Serial.println("I2C BUS RECOVERY SUCCESS");
 }
 }  // namespace
 
 void initializeAllSensors() {
-  lastInitializationAttemptMs = millis();
   lastSensorReadMs = 0;
   nextSensorToRead = 0;
+
+  const uint32_t now = millis();
+  for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
+    lastInitializationAttemptMs[index] = now;
+  }
 
   clearAllSensorStates();
   markAllSensorsUnavailable();
@@ -109,6 +126,8 @@ void initializeAllSensors() {
   if (!i2cBusBegin()) {
     return;
   }
+
+  servoCtrlRestoreAfterI2cRecovery();
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     if (sensorConfigured(index)) {
@@ -121,6 +140,7 @@ void updateSensors() {
   readNextAvailableSensorIfDue();
   markStaleSensorsUnavailable();
   retryMissingSensorsIfDue();
+  recoverI2cBusIfRequired();
 }
 
 }  // namespace laserSensorInternal

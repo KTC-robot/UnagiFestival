@@ -20,6 +20,11 @@ void servoCtrlBegin();
 void servoCtrlDisableAll();
 
 /**
+ * @brief I2C bus recovery後にPCA9685の動作設定を再適用する。
+ */
+void servoCtrlRestoreAfterI2cRecovery();
+
+/**
  * @brief サーボ制御パケットを解析し、指定チャネルへ角度を出力する。
  *
  * パケットは先頭の種別1バイトに続くチャネル1バイト、角度1バイトを

@@ -5,6 +5,7 @@
 #include "im920_comm/im920_comm.h"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
+#include "servo_ctrl/servo_ctrl.h"
 
 void setup() {
   Serial.begin(115200);
@@ -20,13 +21,14 @@ void setup() {
     );
   }
 
-  if (!laserSensorCtrlBegin()) {
-    Serial.println("WARNING: laser sensor initialization failed.");
-  }
-
+  servoCtrlBegin();
   chassisCtrlBegin();
   im920CommBegin();
   chassisCtrlStop();
+
+  if (!laserSensorCtrlBegin()) {
+    Serial.println("WARNING: laser sensor task startup failed.");
+  }
 
   Serial.println();
   Serial.println("READY");
@@ -39,8 +41,6 @@ void loop() {
   canCommReadFrames();
   chassisCtrlUpdate();
   canCommSendPeriodically();
-
-  laserSensorCtrlUpdate();
 
   im920CommCheckTimeout();
   im920CommSendPeriodicStatus();

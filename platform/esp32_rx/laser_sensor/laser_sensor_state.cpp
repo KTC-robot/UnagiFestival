@@ -1,8 +1,34 @@
 #include "laser_sensor_state.hpp"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 namespace laserSensorInternal {
 namespace {
 SensorState sensorStates[LASER_SENSOR_COUNT];
+SemaphoreHandle_t stateMutex = nullptr;
+
+class StateLock {
+ public:
+  StateLock() : locked_(false) {
+    if (stateMutex == nullptr) {
+      stateMutex = xSemaphoreCreateRecursiveMutex();
+    }
+    if (stateMutex != nullptr) {
+      locked_ =
+        xSemaphoreTakeRecursive(stateMutex, portMAX_DELAY) == pdTRUE;
+    }
+  }
+
+  ~StateLock() {
+    if (locked_) {
+      xSemaphoreGiveRecursive(stateMutex);
+    }
+  }
+
+ private:
+  bool locked_;
+};
 
 bool correctedDistanceValid(int distanceMm) {
   return (
@@ -21,6 +47,7 @@ bool sensorConfigured(int index) {
 }
 
 void clearOneSensorState(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return;
   }
@@ -29,18 +56,21 @@ void clearOneSensorState(int index) {
 }
 
 void clearAllSensorStates() {
+  StateLock lock;
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     clearOneSensorState(index);
   }
 }
 
 void markAllSensorsUnavailable() {
+  StateLock lock;
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     sensorStates[index].available = false;
   }
 }
 
 void invalidateSensorReading(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return;
   }
@@ -51,6 +81,7 @@ void invalidateSensorReading(int index) {
 }
 
 void markSensorAvailable(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return;
   }
@@ -59,6 +90,7 @@ void markSensorAvailable(int index) {
 }
 
 void disableSensor(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return;
   }
@@ -72,6 +104,7 @@ void disableSensor(int index) {
 }
 
 bool sensorAvailable(int index) {
+  StateLock lock;
   return (
     index >= 0 &&
     index < LASER_SENSOR_COUNT &&
@@ -80,6 +113,7 @@ bool sensorAvailable(int index) {
 }
 
 bool sensorHasValue(int index) {
+  StateLock lock;
   return (
     index >= 0 &&
     index < LASER_SENSOR_COUNT &&
@@ -88,6 +122,7 @@ bool sensorHasValue(int index) {
 }
 
 uint32_t sensorLastGoodMs(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return 0;
   }
@@ -96,6 +131,7 @@ uint32_t sensorLastGoodMs(int index) {
 }
 
 uint8_t sensorErrorCount(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return 0;
   }
@@ -104,6 +140,7 @@ uint8_t sensorErrorCount(int index) {
 }
 
 void incrementSensorErrorCount(int index) {
+  StateLock lock;
   if (index < 0 || index >= LASER_SENSOR_COUNT) {
     return;
   }
@@ -114,6 +151,7 @@ void incrementSensorErrorCount(int index) {
 }
 
 void storeSensorReading(int index, uint16_t rawDistanceMm) {
+  StateLock lock;
   if (!sensorConfigured(index)) {
     return;
   }
@@ -150,6 +188,7 @@ void storeSensorReading(int index, uint16_t rawDistanceMm) {
 }
 
 bool allConfiguredSensorsFresh() {
+  StateLock lock;
   const uint32_t now = millis();
   bool anyConfigured = false;
 
@@ -174,6 +213,7 @@ bool allConfiguredSensorsFresh() {
 }
 
 bool sensorFresh(int index) {
+  StateLock lock;
   if (!sensorConfigured(index)) {
     return false;
   }
@@ -188,6 +228,7 @@ bool sensorFresh(int index) {
 }
 
 int sensorDistanceMm(int index) {
+  StateLock lock;
   if (!sensorFresh(index)) {
     return -1;
   }
@@ -196,6 +237,7 @@ int sensorDistanceMm(int index) {
 }
 
 int connectedSensorCount() {
+  StateLock lock;
   int count = 0;
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
@@ -220,6 +262,7 @@ int configuredSensorCount() {
 }
 
 bool newMeasurementSetReady() {
+  StateLock lock;
   bool anyConfigured = false;
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {

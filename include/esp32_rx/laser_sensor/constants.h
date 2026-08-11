@@ -64,6 +64,12 @@ constexpr uint32_t LASER_SENSOR_REINIT_INTERVAL_MS = 3000;
 
 // I2C/APIエラーが連続した場合にセンサーを停止する閾値
 constexpr uint8_t LASER_SENSOR_MAX_ERROR_COUNT = 5;
+constexpr uint8_t LASER_SENSOR_BUS_FAULT_THRESHOLD = 3;
+
+constexpr uint32_t LASER_SENSOR_TASK_DELAY_MS = 10;
+constexpr uint32_t LASER_SENSOR_TASK_STACK_SIZE = 8192;
+constexpr uint32_t LASER_SENSOR_TASK_PRIORITY = 1;
+constexpr BaseType_t LASER_SENSOR_TASK_CORE = 0;
 
 // ========================================
 // 距離

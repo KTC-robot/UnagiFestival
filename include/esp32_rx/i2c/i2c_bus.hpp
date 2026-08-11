@@ -2,6 +2,23 @@
 
 #include <Arduino.h>
 
+class I2cBusLockGuard {
+ public:
+  I2cBusLockGuard();
+  ~I2cBusLockGuard();
+
+  I2cBusLockGuard(const I2cBusLockGuard&) = delete;
+  I2cBusLockGuard& operator=(const I2cBusLockGuard&) = delete;
+
+  bool locked() const;
+
+ private:
+  bool locked_;
+};
+
+bool i2cBusLock();
+void i2cBusUnlock();
+
 /**
  * @file i2c_bus.hpp
  * @brief VL53L0X群とTCA9548Aを接続するI2Cバス制御APIを提供する。
@@ -40,6 +57,8 @@ bool i2cBusDisableAllTcaChannels();
  * @return 成功時true。
  */
 bool i2cBusSelectTcaChannel(uint8_t channel);
+
+bool i2cBusProbeDevice(uint8_t address);
 
 /**
  * @brief SDAの現在の論理レベルを取得する。

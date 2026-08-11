@@ -11,11 +11,11 @@
  */
 
 /**
- * @brief 有効設定されているVL53L0X群を初期化する。
+ * @brief VL53L0X初期化と更新を行う低優先度Taskを起動する。
  *
  * I2CバスとTCA9548Aを初期化した後、設定上有効な各VL53L0Xを順番に初期化する。
  *
- * @return 有効設定されている全センサーの初期化に成功した場合true。
+ * @return Taskの起動に成功した場合true。
  */
 bool laserSensorCtrlBegin();
 
