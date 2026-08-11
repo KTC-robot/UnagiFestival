@@ -20,23 +20,18 @@ void chassisCtrlBegin();
 void chassisCtrlUpdate();
 
 /**
- * @brief ジョイスティックまたは十字キー入力から各車輪の目標回転数を設定する。
+ * @brief ロボットの移動指令から各車輪の目標回転数を設定する。
  *
- * 十字キー入力がある場合はジョイスティック入力より優先する。値は内部で正規化、
- * デッドゾーン処理、方向反転、車輪ゲイン補正を受ける。
+ * 入力値は内部で正規化、デッドゾーン処理、方向反転、車輪ゲイン補正を受ける。
  *
- * @param lx 左スティックX軸の入力値。
- * @param ly 左スティックY軸の入力値。
- * @param rx 右スティックX軸の入力値。
- * @param dpadX 十字キーX軸の入力値。
- * @param dpadY 十字キーY軸の入力値。
+ * @param vx 前後方向の移動指令。範囲は-127〜127。
+ * @param vy 左右方向の移動指令。範囲は-127〜127。
+ * @param wz 回転方向の移動指令。範囲は-127〜127。
  */
-void chassisCtrlSetFromJoy(
-  int8_t lx,
-  int8_t ly,
-  int8_t rx,
-  int8_t dpadX,
-  int8_t dpadY
+void chassisCtrlSetDriveCommand(
+  int8_t vx,
+  int8_t vy,
+  int8_t wz
 );
 
 /**

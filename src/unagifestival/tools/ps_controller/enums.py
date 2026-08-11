@@ -1,8 +1,8 @@
+from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import Self
 
 from evdev import ecodes
-
 
 # ============================================================
 # Controller event types
@@ -64,44 +64,35 @@ class AxisCode(Enum):
 # ============================================================
 
 
+class ButtonState(IntEnum):
+    """evdevが通知するボタン状態。"""
+
+    RELEASED = 0
+    PRESSED = 1
+
+
 class ButtonCode(Enum):
-    """
-    PS5ボタンの対応表。
+    """PS5ボタンに対応するLinux evdevコード。"""
 
-    ここだけを編集すれば、
-      ・Linux evdevコード
-      ・IM920で送るbutton_id
-      ・ログに表示するボタン名
-    の対応を一括管理できる。
+    CROSS_BTN = ecodes.BTN_SOUTH
+    CIRCLE_BTN = ecodes.BTN_EAST
+    TRIANGLE_BTN = ecodes.BTN_NORTH
+    SQUARE_BTN = ecodes.BTN_WEST
+    L1_BTN = ecodes.BTN_TL
+    R1_BTN = ecodes.BTN_TR
+    L2_BTN = ecodes.BTN_TL2
+    R2_BTN = ecodes.BTN_TR2
+    SHARE_BTN = ecodes.BTN_SELECT
+    OPTIONS_BTN = ecodes.BTN_START
+    PS_BTN = ecodes.BTN_MODE
+    L3_BTN = ecodes.BTN_THUMBL
+    R3_BTN = ecodes.BTN_THUMBR
+    TOUCHPAD_BTN = ecodes.BTN_RIGHT
 
-    tuple:
-        (evdev_code, packet_id)
-
-    例:
-        SQUARE_BTN = (308, 3)
-    """
-
-    CROSS_BTN = (304, 0)
-    CIRCLE_BTN = (305, 1)
-    TRIANGLE_BTN = (307, 2)
-    SQUARE_BTN = (308, 3)
-    L1_BTN = (310, 4)
-    R1_BTN = (311, 5)
-    L2_BTN = (312, 6)
-    R2_BTN = (313, 7)
-    SHARE_BTN = (314, 8)
-    OPTIONS_BTN = (315, 9)
-    PS_BTN = (316, 10)
-    L3_BTN = (317, 11)
-    R3_BTN = (318, 12)
-    TOUCHPAD_BTN = (273, 13)
-
-    def __init__(self, code: int, packet_id: int) -> None:
-        self.code = code
-        self.packet_id = packet_id
-
-        # 既存コードとの互換性のため残す。
-        self.value_type = bool
+    @property
+    def code(self) -> int:
+        """Linux evdevコードを返す。"""
+        return int(self.value)
 
     @property
     def display_name(self) -> str:
@@ -117,15 +108,9 @@ class ButtonCode(Enum):
 
         return None
 
-    @classmethod
-    def get_by_packet_id(cls, packet_id: int) -> Self | None:
-        """IM920で送るbutton_idからボタンを取得する。"""
-        for button in cls:
-            if button.packet_id == packet_id:
-                return button
+@dataclass(frozen=True)
+class ButtonEvent:
+    """ボタン種別と押下状態を組み合わせた入力イベント。"""
 
-        return None
-
-    @classmethod
-    def valid_packet_ids(cls) -> set[int]:
-        return {button.packet_id for button in cls}
+    code: ButtonCode
+    state: ButtonState

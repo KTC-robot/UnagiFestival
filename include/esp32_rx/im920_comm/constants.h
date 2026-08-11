@@ -11,15 +11,26 @@ constexpr int LED_PIN = 2;
 constexpr uint32_t LED_PULSE_MS = 30;
 constexpr uint32_t COMM_TIMEOUT_MS = 600;
 constexpr uint32_t STATUS_TX_INTERVAL_MS = 1000;
-constexpr int JOY_ACK_INTERVAL = 10;
+constexpr int DRIVE_ACK_INTERVAL = 10;
 
-constexpr int DRIVE_POWER_STEP = 5;
 constexpr bool ENABLE_REPLY_TO_PI = true;
 constexpr bool ENABLE_RPM_TO_PI = true;
 // Raspberry Pi側へ距離センサー状態を送る。
 constexpr bool ENABLE_AIR_STATUS_TO_PI = true;
 constexpr bool SHOW_RAW = true;
-constexpr bool SHOW_JOY = true;
+constexpr bool SHOW_DRIVE = true;
+
+enum class PacketType : uint8_t {
+  CONTROL = 0x43,
+  SERVO_SET = 0x53
+};
+
+enum class ControlCommand : uint8_t {
+  STOP = 0x01,
+  EMERGENCY_STOP = 0x02,
+  CHANGE_POWER = 0x03,
+  DRIVE = 0x04
+};
 
 // Raspberry Pi側で確認済みのIM920設定。
 // 自動書き換えはせず、起動時にESP32側の値を読み出して比較する。

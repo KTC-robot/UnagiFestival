@@ -64,18 +64,9 @@ String utilCollectHexChars(const String& text);
 String utilTextToHex(const String& text);
 
 /**
- * @brief コントローラーのボタンIDに対応する名称を取得する。
+ * @brief 移動指令へデッドゾーンと範囲制限を適用して正規化する。
  *
- * @param id ボタンID。実装で定義された範囲は0〜13。
- * @return 対応するボタン名称。未定義のIDの場合は"UNKNOWN"。
- */
-String utilButtonName(uint8_t id);
-
-/**
- * @brief ジョイスティック入力へデッドゾーンと範囲制限を適用して正規化する。
- *
- * @param value 正規化するジョイスティック入力値。
+ * @param value 正規化する移動指令値。
  * @return -1.0〜1.0の正規化値。絶対値がデッドゾーン未満の場合は0.0。
  */
-float utilJoyToFloat(int value);
-
+float utilCommandToFloat(int value);

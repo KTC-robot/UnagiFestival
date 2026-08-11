@@ -89,31 +89,11 @@ String utilTextToHex(const String& text) {
   return hex;
 }
 
-String utilButtonName(uint8_t id) {
-  switch (id) {
-    case 0: return "CROSS";
-    case 1: return "CIRCLE";
-    case 2: return "TRIANGLE";
-    case 3: return "SQUARE";
-    case 4: return "L1";
-    case 5: return "R1";
-    case 6: return "L2_BTN";
-    case 7: return "R2_BTN";
-    case 8: return "SHARE";
-    case 9: return "OPTIONS";
-    case 10: return "PS";
-    case 11: return "L3";
-    case 12: return "R3";
-    case 13: return "TOUCHPAD";
-    default: return "UNKNOWN";
-  }
-}
-
-float utilJoyToFloat(int value) {
-  if (abs(value) < JOY_DEAD) {
+float utilCommandToFloat(int value) {
+  if (abs(value) < COMMAND_DEAD) {
     value = 0;
   }
 
-  value = constrain(value, -JOY_MAX, JOY_MAX);
-  return static_cast<float>(value) / static_cast<float>(JOY_MAX);
+  value = constrain(value, -COMMAND_MAX, COMMAND_MAX);
+  return static_cast<float>(value) / static_cast<float>(COMMAND_MAX);
 }

@@ -79,7 +79,7 @@ def main() -> None:
                 for ev in dev.read():
                     if ev.type == EventType.ABS:
                         raw[ev.code] = ev.value
-                        handler.handle_abs(ev.code, ev.value)
+                        handler.handle_abs(ev.code, raw, info)
 
                     elif ev.type == EventType.KEY:
                         handler.handle_key(ev.code, ev.value)

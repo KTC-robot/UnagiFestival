@@ -19,18 +19,12 @@ uint32_t ledOffAt = 0;
 
 uint32_t lastRxMs = 0;
 uint32_t lastStatusTxMs = 0;
-uint32_t joyPacketCount = 0;
-
-int8_t lastDpadX = 0;
-int8_t lastDpadY = 0;
+uint32_t driveCommandCount = 0;
 
 bool isKnownPacketType(uint8_t type) {
   return (
-    type == 0x42 ||
-    type == 0x43 ||
-    type == 0x44 ||
-    type == 0x4A ||
-    type == 0x53
+    type == static_cast<uint8_t>(PacketType::CONTROL) ||
+    type == static_cast<uint8_t>(PacketType::SERVO_SET)
   );
 }
 
@@ -176,184 +170,80 @@ void printIm920Configuration() {
   Serial.println("--- IM920 configuration check end ---");
 }
 
-void handleButtonPacket(const String& hex) {
-  if (hex.length() < 6) {
-    return;
-  }
-
-  const uint8_t id = utilHexByteToUint8(hex.substring(2, 4));
-  const uint8_t state = utilHexByteToUint8(hex.substring(4, 6));
-
-  Serial.print("BUTTON <- ");
-  Serial.print(utilButtonName(id));
-  Serial.print(" state=");
-  Serial.println(state);
-
-  String reply = "BTN ";
-  reply += utilButtonName(id);
-  reply += " ";
-  reply += String(state);
-  im920CommSendText(reply);
-
-  if (state != 1) {
-    return;
-  }
-
-  if (id == 10) {
-    Serial.println("EMERGENCY STOP by PS button");
-    chassisCtrlStop();
-    lastDpadX = 0;
-    lastDpadY = 0;
-  } else if (id == 4) {
-    chassisCtrlChangePower(-DRIVE_POWER_STEP);
-  } else if (id == 5) {
-    chassisCtrlChangePower(DRIVE_POWER_STEP);
-  } else if (id == 0) {
-    Serial.println("STOP by CROSS button");
-    chassisCtrlStop();
-  }
-}
-
 void handleControlPacket(const String& hex) {
-  if (hex.length() < 6) {
+  if (hex.length() < 4) {
     return;
   }
 
-  const uint8_t commandId =
-    utilHexByteToUint8(hex.substring(2, 4));
-
-  const int8_t value =
-    utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
+  const ControlCommand command = static_cast<ControlCommand>(
+    utilHexByteToUint8(hex.substring(2, 4))
+  );
 
   Serial.print("CONTROL <- ID=");
-  Serial.print(commandId);
-  Serial.print(" value=");
-  Serial.println(value);
+  Serial.println(static_cast<uint8_t>(command));
 
-  switch (commandId) {
-    case 1:  // STOP
+  switch (command) {
+    case ControlCommand::STOP:
       chassisCtrlStop();
-      lastDpadX = 0;
-      lastDpadY = 0;
       im920CommSendText("CTRL STOP");
       break;
 
-    case 2:  // EMERGENCY_STOP
-      Serial.println("EMERGENCY STOP by CONTROL command");
+    case ControlCommand::EMERGENCY_STOP:
+      Serial.println("EMERGENCY STOP");
       chassisCtrlStop();
-      lastDpadX = 0;
-      lastDpadY = 0;
       im920CommSendText("CTRL ESTOP");
       break;
 
-    case 3:  // CHANGE_POWER
-      chassisCtrlChangePower(value);
-      {
-        String reply = "CTRL PWR=";
+    case ControlCommand::CHANGE_POWER: {
+      if (hex.length() < 6) {
+        return;
+      }
+
+      const int8_t delta =
+        utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
+
+      chassisCtrlChangePower(delta);
+      String reply = "CTRL PWR=";
+      reply += String(chassisCtrlGetPowerPercent());
+      im920CommSendText(reply);
+      break;
+    }
+
+    case ControlCommand::DRIVE: {
+      if (hex.length() < 10) {
+        return;
+      }
+
+      const int8_t vx =
+        utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
+      const int8_t vy =
+        utilToInt8(utilHexByteToUint8(hex.substring(6, 8)));
+      const int8_t wz =
+        utilToInt8(utilHexByteToUint8(hex.substring(8, 10)));
+
+      if (SHOW_DRIVE) {
+        Serial.print("DRIVE <- VX=");
+        Serial.print(vx);
+        Serial.print(" VY=");
+        Serial.print(vy);
+        Serial.print(" WZ=");
+        Serial.println(wz);
+      }
+
+      chassisCtrlSetDriveCommand(vx, vy, wz);
+      ++driveCommandCount;
+
+      if (driveCommandCount % DRIVE_ACK_INTERVAL == 0) {
+        String reply = "DRIVE OK PWR=";
         reply += String(chassisCtrlGetPowerPercent());
         im920CommSendText(reply);
       }
       break;
+    }
 
     default:
       Serial.println("CONTROL unknown command");
       break;
-  }
-}
-
-void handleDpadPacket(const String& hex) {
-  if (hex.length() < 6) {
-    return;
-  }
-
-  const uint8_t axis = utilHexByteToUint8(hex.substring(2, 4));
-  const int8_t value =
-    utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
-
-  if (axis == 0) {
-    lastDpadX = value;
-  } else if (axis == 1) {
-    lastDpadY = value;
-  }
-
-  Serial.print("DPAD <- ");
-  Serial.print(axis == 0 ? "X" : "Y");
-  Serial.print(" value=");
-  Serial.println(value);
-
-  chassisCtrlSetFromJoy(
-    0,
-    0,
-    0,
-    lastDpadX,
-    lastDpadY
-  );
-
-  String reply = "DPAD ";
-  reply += axis == 0 ? "X " : "Y ";
-  reply += String(value);
-  im920CommSendText(reply);
-}
-
-void handleJoyPacket(const String& hex) {
-  if (hex.length() < 18) {
-    return;
-  }
-
-  const int8_t lx =
-    utilToInt8(utilHexByteToUint8(hex.substring(2, 4)));
-
-  const int8_t ly =
-    utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
-
-  const int8_t rx =
-    utilToInt8(utilHexByteToUint8(hex.substring(6, 8)));
-
-  const int8_t ry =
-    utilToInt8(utilHexByteToUint8(hex.substring(8, 10)));
-
-  const uint8_t l2 =
-    utilHexByteToUint8(hex.substring(10, 12));
-
-  const uint8_t r2 =
-    utilHexByteToUint8(hex.substring(12, 14));
-
-  const int8_t dpadX =
-    utilToInt8(utilHexByteToUint8(hex.substring(14, 16)));
-
-  const int8_t dpadY =
-    utilToInt8(utilHexByteToUint8(hex.substring(16, 18)));
-
-  lastDpadX = dpadX;
-  lastDpadY = dpadY;
-
-  if (SHOW_JOY) {
-    Serial.print("JOY <- LX=");
-    Serial.print(lx);
-    Serial.print(" LY=");
-    Serial.print(ly);
-    Serial.print(" RX=");
-    Serial.print(rx);
-    Serial.print(" RY=");
-    Serial.print(ry);
-    Serial.print(" L2=");
-    Serial.print(l2);
-    Serial.print(" R2=");
-    Serial.print(r2);
-    Serial.print(" DPX=");
-    Serial.print(dpadX);
-    Serial.print(" DPY=");
-    Serial.println(dpadY);
-  }
-
-  chassisCtrlSetFromJoy(lx, ly, rx, dpadX, dpadY);
-
-  ++joyPacketCount;
-
-  if (joyPacketCount % JOY_ACK_INTERVAL == 0) {
-    String reply = "JOY OK PWR=";
-    reply += String(chassisCtrlGetPowerPercent());
-    im920CommSendText(reply);
   }
 }
 
@@ -372,15 +262,9 @@ void handlePayloadHex(const String& hex) {
   lastRxMs = millis();
   pulseLed();
 
-  if (type == 0x42) {
-    handleButtonPacket(hex);
-  } else if (type == 0x43) {
+  if (type == static_cast<uint8_t>(PacketType::CONTROL)) {
     handleControlPacket(hex);
-  } else if (type == 0x44) {
-    handleDpadPacket(hex);
-  } else if (type == 0x4A) {
-    handleJoyPacket(hex);
-  } else if (type == 0x53) {
+  } else if (type == static_cast<uint8_t>(PacketType::SERVO_SET)) {
     servoCtrlHandlePacket(hex);
   }
 }

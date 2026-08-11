@@ -21,8 +21,9 @@ AXIS_NORMALIZED_CENTER: Final[float] = 0.0
 SLAVE_ADR: Final[int] = 0x30
 LED_PIN: Final[int] = 24
 
-# JOYパケット送信周期
-JOY_HZ: Final[float] = 5.0
+# DRIVEコマンド送信周期
+DRIVE_HZ: Final[float] = 5.0
+DRIVE_POWER_STEP: Final[int] = 5
 
 # IM920-HATのI2Cコマンド長制限
 IM920_CMD_MAX_LEN: Final[int] = 32
@@ -88,21 +89,19 @@ SERVO_SEND_HOME_ON_START: Final[bool] = False
 # ============================================================
 #
 # 形式:
-#   button_id: ((channel, angle), ...)
+#   ButtonCode: ((channel, angle), ...)
 #
-# ボタン番号を直接書かず、enums.pyのButtonCodeを使用する。
-# 例:
-#   ButtonCode.SQUARE_BTN.packet_id
+# enums.pyのButtonCodeを使用する。
 #
 # CROSS、L1、R1、PSは足回りで使用するため、
 # サーボへ割り当てない。
 SERVO_BUTTON_ACTIONS: Final[
-    dict[int, tuple[tuple[int, int], ...]]
+    dict[ButtonCode, tuple[tuple[int, int], ...]]
 ] = {
-    ButtonCode.SQUARE_BTN.packet_id: ((2, 60),),
-    ButtonCode.TRIANGLE_BTN.packet_id: ((2, 120),),
-    ButtonCode.CIRCLE_BTN.packet_id: ((1, 90),),
-    ButtonCode.OPTIONS_BTN.packet_id: ((1, 0),),
+    ButtonCode.SQUARE_BTN: ((2, 60),),
+    ButtonCode.TRIANGLE_BTN: ((2, 120),),
+    ButtonCode.CIRCLE_BTN: ((1, 90),),
+    ButtonCode.OPTIONS_BTN: ((1, 0),),
 }
 
 
@@ -111,9 +110,9 @@ SERVO_BUTTON_ACTIONS: Final[
 # ============================================================
 #
 # 形式:
-#   button_id: ((channel, angle_a, angle_b), ...)
+#   ButtonCode: ((channel, angle_a, angle_b), ...)
 SERVO_TOGGLE_ACTIONS: Final[
-    dict[int, tuple[tuple[int, int, int], ...]]
+    dict[ButtonCode, tuple[tuple[int, int, int], ...]]
 ] = {
-    ButtonCode.L2_BTN.packet_id: ((0, 0, 180),),
+    ButtonCode.L2_BTN: ((0, 0, 180),),
 }
