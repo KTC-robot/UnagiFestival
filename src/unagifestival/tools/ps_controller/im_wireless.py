@@ -5,7 +5,7 @@ import time
 
 from typing import Final
 
-import smbus
+import smbus2 as smbus
 
 from RPi import GPIO
 
@@ -31,7 +31,7 @@ class IMWireClass:
 
         self.slave_adr = slave_address
 
-        GPIO.setwarnings(flag=False)
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
 
         GPIO.setup(RESET_PIN, GPIO.OUT)

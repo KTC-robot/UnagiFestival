@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "evdev>=1.9.3",
     "pyserial>=3.5",
+    "rpi-lgpio>=0.6",
+    "smbus2>=0.6.1",
 ]
 
 [build-system]
