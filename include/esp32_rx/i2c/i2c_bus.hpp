@@ -3,6 +3,11 @@
 #include <Arduino.h>
 
 /**
+ * @file i2c_bus.hpp
+ * @brief VL53L0X群とTCA9548Aを接続するI2Cバス制御APIを提供する。
+ */
+
+/**
  * @brief レーザーセンサー用I2Cバスを初期化する。
  *
  * @return 初期化成功時true。
