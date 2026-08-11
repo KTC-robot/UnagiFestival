@@ -2,7 +2,6 @@ import logging
 import re
 import time
 
-from evdev import ecodes
 from RPi import GPIO
 
 from unagifestival.tools.ps_controller import im_wireless as imw
@@ -22,6 +21,8 @@ from unagifestival.tools.ps_controller.config import (
     TX_LED_PULSE_SEC,
 )
 from unagifestival.tools.ps_controller.enums import (
+    AxisCode,
+    AxisInputEvent,
     ButtonCode,
     ButtonEvent,
     ButtonState,
@@ -109,8 +110,8 @@ class RobotHandler:
         if axis_info is None:
             return 0
 
-        min_v = axis_info.min
-        max_v = axis_info.max
+        min_v = axis_info.minimum
+        max_v = axis_info.maximum
 
         if max_v == min_v:
             return 0
@@ -360,22 +361,22 @@ class RobotHandler:
 
     def _make_drive_command(self, state: ControllerState) -> DriveCommand:
         lx = self._normalize_axis(
-            state.axis_values.get(ecodes.ABS_X, 0),
-            state.axis_info.get(ecodes.ABS_X),
+            state.axis_values.get(AxisCode.LEFT_STICK_X, 0),
+            state.axis_info.get(AxisCode.LEFT_STICK_X),
         )
 
         ly = self._normalize_axis(
-            state.axis_values.get(ecodes.ABS_Y, 0),
-            state.axis_info.get(ecodes.ABS_Y),
+            state.axis_values.get(AxisCode.LEFT_STICK_Y, 0),
+            state.axis_info.get(AxisCode.LEFT_STICK_Y),
         )
 
         rx = self._normalize_axis(
-            state.axis_values.get(ecodes.ABS_RX, 0),
-            state.axis_info.get(ecodes.ABS_RX),
+            state.axis_values.get(AxisCode.RIGHT_STICK_X, 0),
+            state.axis_info.get(AxisCode.RIGHT_STICK_X),
         )
 
-        dpad_x = state.axis_values.get(ecodes.ABS_HAT0X, 0)
-        dpad_y = state.axis_values.get(ecodes.ABS_HAT0Y, 0)
+        dpad_x = state.axis_values.get(AxisCode.DPAD_X, 0)
+        dpad_y = state.axis_values.get(AxisCode.DPAD_Y, 0)
 
         if dpad_x != 0 or dpad_y != 0:
             vx = dpad_y * STICK_SEND_MAX
@@ -412,39 +413,23 @@ class RobotHandler:
     # Event handlers
     # ============================================================
 
-    def handle_abs(
+    def handle_axis(
         self,
-        code: int,
+        event: AxisInputEvent,
         state: ControllerState,
     ) -> None:
         self._update_tx_led()
+        state.axis_values[event.code] = event.value
 
-        if code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+        if event.code in (AxisCode.DPAD_X, AxisCode.DPAD_Y):
             self.robot.drive(self._make_drive_command(state))
 
-    def handle_key(self, code: int, value: int) -> None:
+    def handle_button(self, event: ButtonEvent) -> None:
         self._update_tx_led()
-
-        try:
-            state = ButtonState(value)
-        except ValueError:
-            return
-
-        button = ButtonCode.get_by_code(code)
-
-        if button is None:
-            logger.debug(
-                "[ROBOT] Unknown KEY code=%d value=%d",
-                code,
-                value,
-            )
-            return
-
-        event = ButtonEvent(button, state)
         logger.info(
             "[ROBOT] BUTTON %s state=%s",
-            button.display_name,
-            state.name,
+            event.code.display_name,
+            event.state.name,
         )
         self._handle_button_event(event)
         self._handle_servo_button(event)

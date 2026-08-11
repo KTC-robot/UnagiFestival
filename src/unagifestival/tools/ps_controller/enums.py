@@ -59,6 +59,14 @@ class AxisCode(Enum):
         return None
 
 
+@dataclass(frozen=True)
+class AxisInputEvent:
+    """軸種別と現在値を組み合わせた入力イベント."""
+
+    code: AxisCode
+    value: int
+
+
 # ============================================================
 # PS5 button table
 # ============================================================
@@ -114,3 +122,6 @@ class ButtonEvent:
 
     code: ButtonCode
     state: ButtonState
+
+
+type ControllerInputEvent = AxisInputEvent | ButtonEvent

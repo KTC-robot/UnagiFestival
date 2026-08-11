@@ -1,25 +1,19 @@
 from dataclasses import dataclass
-from typing import Protocol
 
-from unagifestival.tools.ps_controller.enums import ButtonCode
-
-
-class AxisInfo(Protocol):
-    """コントローラー軸の正規化に必要な範囲情報."""
-
-    @property
-    def value(self) -> int | None: ...
-
-    @property
-    def min(self) -> int: ...
-
-    @property
-    def max(self) -> int: ...
+from unagifestival.tools.ps_controller.enums import AxisCode, ButtonCode
 
 
-type EventCode = int
-type AxisValueMap = dict[EventCode, int]
-type AxisInfoMap = dict[EventCode, AxisInfo]
+@dataclass(frozen=True)
+class AxisInfo:
+    """コントローラー軸の現在値と範囲情報."""
+
+    value: int | None
+    minimum: int
+    maximum: int
+
+
+type AxisValueMap = dict[AxisCode, int]
+type AxisInfoMap = dict[AxisCode, AxisInfo]
 
 
 @dataclass
