@@ -8,20 +8,22 @@
 
 constexpr int LASER_SENSOR_COUNT = 3;
 
+// 論理インデックスは FRONT / CENTER / REAR の順で固定する。
+// 物理的なTCA9548Aチャネルとの差は LASER_SENSOR_CHANNELS で吸収する。
 constexpr int LASER_SENSOR_FRONT = 0;
 constexpr int LASER_SENSOR_CENTER = 1;
 constexpr int LASER_SENSOR_REAR = 2;
 
 constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
-    true,   // FRONT  CH0
-    true,  // CENTER CH1
-    true   // REAR   CH2
+    true,  // FRONT  CH1
+    true,  // CENTER CH2
+    true   // REAR   CH0
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {
-    0,
-    1,
-    2
+    1,  // FRONT
+    2,  // CENTER
+    0   // REAR
 };
 
 constexpr int LASER_SENSOR_OFFSETS_MM[LASER_SENSOR_COUNT] = {
@@ -52,9 +54,6 @@ constexpr uint32_t LASER_SENSOR_PERIOD_MS = 100;
 // この時間以上新しい値がなければfreshではない
 constexpr uint32_t LASER_SENSOR_STALE_MS = 1000;
 
-// この時間測距できなければ利用不可にする
-constexpr uint32_t LASER_SENSOR_REINIT_AFTER_MS = 3000;
-
 // 再初期化を連打しないための間隔
 constexpr uint32_t LASER_SENSOR_REINIT_INTERVAL_MS = 3000;
 
@@ -64,6 +63,12 @@ constexpr uint32_t LASER_SENSOR_REINIT_INTERVAL_MS = 3000;
 
 // I2C/APIエラーが連続した場合にセンサーを停止する閾値
 constexpr uint8_t LASER_SENSOR_MAX_ERROR_COUNT = 5;
+constexpr uint8_t LASER_SENSOR_BUS_FAULT_THRESHOLD = 3;
+
+constexpr uint32_t LASER_SENSOR_TASK_DELAY_MS = 10;
+constexpr uint32_t LASER_SENSOR_TASK_STACK_SIZE = 8192;
+constexpr uint32_t LASER_SENSOR_TASK_PRIORITY = 1;
+constexpr BaseType_t LASER_SENSOR_TASK_CORE = 0;
 
 // ========================================
 // 距離

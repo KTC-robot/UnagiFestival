@@ -5,9 +5,15 @@
 
 #include <Arduino.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 using namespace laserSensorInternal;
 
-bool laserSensorCtrlBegin() {
+namespace {
+TaskHandle_t laserSensorTaskHandle = nullptr;
+
+void laserSensorTask(void*) {
   initializeAllSensors();
 
   const int configuredCount = configuredSensorCount();
@@ -18,22 +24,36 @@ bool laserSensorCtrlBegin() {
   Serial.print(" / ");
   Serial.println(configuredCount);
 
-  if (
-    configuredCount > 0 &&
-    connectedCount == configuredCount
-  ) {
-    Serial.println("VL53L0X センサー初期化完了");
+  for (;;) {
+    updateSensors();
+    vTaskDelay(pdMS_TO_TICKS(LASER_SENSOR_TASK_DELAY_MS));
+  }
+}
+}  // namespace
+
+bool laserSensorCtrlBegin() {
+  if (laserSensorTaskHandle != nullptr) {
     return true;
   }
 
-  Serial.println(
-    "VL53L0X: 有効なセンサーの一部または全部を初期化できませんでした"
+  const BaseType_t result = xTaskCreatePinnedToCore(
+    laserSensorTask,
+    "laser_sensor",
+    LASER_SENSOR_TASK_STACK_SIZE,
+    nullptr,
+    LASER_SENSOR_TASK_PRIORITY,
+    &laserSensorTaskHandle,
+    LASER_SENSOR_TASK_CORE
   );
-  return false;
-}
 
-void laserSensorCtrlUpdate() {
-  updateSensors();
+  if (result != pdPASS) {
+    laserSensorTaskHandle = nullptr;
+    Serial.println("VL53L0X task start failed");
+    return false;
+  }
+
+  Serial.println("VL53L0X task started");
+  return true;
 }
 
 bool laserSensorCtrlReady() {

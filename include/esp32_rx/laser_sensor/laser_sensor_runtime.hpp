@@ -13,8 +13,8 @@ namespace laserSensorInternal {
 /**
  * @brief 有効設定されている全レーザーセンサーを初期化する。
  *
- * I2Cバスを初期化し、内部状態をリセットした後、設定上有効なセンサーを
- * 順番に初期化する。
+ * 共有I2Cバスが初期化済みであることを前提に、TCA9548Aと内部状態を整え、
+ * 設定上有効なセンサーを順番に初期化する。
  */
 void initializeAllSensors();
 
@@ -22,7 +22,7 @@ void initializeAllSensors();
  * @brief レーザーセンサー群の周期処理を1回実行する。
  *
  * 測距周期に応じたセンサー読み取り、stale判定、必要に応じた再初期化を行う。
- * loop()から継続的に呼び出すことを前提とする。
+ * Laser Sensor専用FreeRTOS Taskから継続的に呼び出す。
  */
 void updateSensors();
 

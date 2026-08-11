@@ -169,7 +169,7 @@ class RobotHandler:
             return
 
         normalized = self._normalize_im920_data(data)
-        logger.info("[ROBOT] IM920 <- %r", normalized)
+        logger.debug("[ROBOT] IM920 <- %r", normalized)
 
         rx_text = self._parse_im920_rx_text(normalized)
 

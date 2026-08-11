@@ -10,12 +10,26 @@
 namespace laserSensorInternal {
 namespace {
 Adafruit_VL53L0X sensors[LASER_SENSOR_COUNT];
+uint8_t consecutiveBusFaults = 0;
+bool recoveryRequired = false;
 
 enum class RangingStatusAction {
   USE_MEASUREMENT,
   IGNORE_MEASUREMENT,
   COUNT_FAILURE
 };
+
+void recordBusFault() {
+  if (consecutiveBusFaults < LASER_SENSOR_BUS_FAULT_THRESHOLD) {
+    ++consecutiveBusFaults;
+  }
+  recoveryRequired =
+    consecutiveBusFaults >= LASER_SENSOR_BUS_FAULT_THRESHOLD;
+}
+
+void recordBusSuccess() {
+  consecutiveBusFaults = 0;
+}
 
 bool prepareSensorChannel(int index) {
   if (i2cBusSelectTcaChannel(LASER_SENSOR_CHANNELS[index])) {
@@ -26,12 +40,14 @@ bool prepareSensorChannel(int index) {
   Serial.print(LASER_SENSOR_NAMES[index]);
   Serial.print(" CH=");
   Serial.println(LASER_SENSOR_CHANNELS[index]);
+  recordBusFault();
   return false;
 }
 
 bool probeSensor(int index) {
-  Wire.beginTransmission(LASER_SENSOR_VL53L0X_ADDRESS);
-  const uint8_t result = Wire.endTransmission(true);
+  const bool responding = i2cBusProbeDevice(
+    LASER_SENSOR_VL53L0X_ADDRESS
+  );
 
   Serial.print("VL53L0X 接続確認: ");
   Serial.print(LASER_SENSOR_NAMES[index]);
@@ -40,9 +56,9 @@ bool probeSensor(int index) {
   Serial.print(" address=0x");
   Serial.print(LASER_SENSOR_VL53L0X_ADDRESS, HEX);
   Serial.print(" result=");
-  Serial.println(result);
+  Serial.println(responding ? 0 : 1);
 
-  return result == 0;
+  return responding;
 }
 
 void printI2CTimeoutDiagnostic(int index) {
@@ -62,6 +78,7 @@ RangingStatusAction handleRangingStatus(
 ) {
   switch (status) {
     case VL53L0X_ERROR_NONE:
+      recordBusSuccess();
       return RangingStatusAction::USE_MEASUREMENT;
 
     case VL53L0X_ERROR_RANGE_ERROR:
@@ -69,11 +86,13 @@ RangingStatusAction handleRangingStatus(
 
     case VL53L0X_ERROR_TIME_OUT:
       printI2CTimeoutDiagnostic(index);
+      recordBusFault();
       return RangingStatusAction::COUNT_FAILURE;
 
     case VL53L0X_ERROR_CONTROL_INTERFACE:
       Serial.print("VL53L0X I2Cエラー: ");
       Serial.println(LASER_SENSOR_NAMES[index]);
+      recordBusFault();
       return RangingStatusAction::COUNT_FAILURE;
 
     default:
@@ -106,6 +125,12 @@ bool initializeOneSensor(int index) {
   Serial.println();
   Serial.print("VL53L0X 初期化開始: ");
   Serial.println(LASER_SENSOR_NAMES[index]);
+
+  I2cBusLockGuard lock;
+  if (!lock.locked()) {
+    disableSensor(index);
+    return false;
+  }
 
   if (!prepareSensorChannel(index)) {
     disableSensor(index);
@@ -153,6 +178,12 @@ void readOneSensor(int index) {
     return;
   }
 
+  I2cBusLockGuard lock;
+  if (!lock.locked()) {
+    countSensorFailure(index);
+    return;
+  }
+
   if (!prepareSensorChannel(index)) {
     invalidateSensorReading(index);
     countSensorFailure(index);
@@ -174,6 +205,9 @@ void readOneSensor(int index) {
       return;
 
     case RangingStatusAction::IGNORE_MEASUREMENT:
+      invalidateSensorReading(index);
+      return;
+
     default:
       return;
   }
@@ -196,6 +230,7 @@ void readOneSensor(int index) {
   if (measurement.RangeStatus == 4) {
     Serial.print("VL53L0X 測定範囲外: ");
     Serial.println(LASER_SENSOR_NAMES[index]);
+    invalidateSensorReading(index);
     return;
   }
 
@@ -203,6 +238,16 @@ void readOneSensor(int index) {
   Serial.print(LASER_SENSOR_NAMES[index]);
   Serial.print(" RangeStatus=");
   Serial.println(measurement.RangeStatus);
+  invalidateSensorReading(index);
+}
+
+bool busRecoveryRequired() {
+  return recoveryRequired;
+}
+
+void clearBusRecoveryRequest() {
+  consecutiveBusFaults = 0;
+  recoveryRequired = false;
 }
 
 }  // namespace laserSensorInternal

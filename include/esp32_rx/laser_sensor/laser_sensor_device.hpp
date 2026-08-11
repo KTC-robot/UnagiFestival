@@ -31,4 +31,10 @@ bool initializeOneSensor(int index);
  */
 void readOneSensor(int index);
 
+/** @brief I2C busレベルの連続障害がrecovery閾値に達したか確認する。 */
+bool busRecoveryRequired();
+
+/** @brief I2C bus recovery要求と連続障害カウントをクリアする。 */
+void clearBusRecoveryRequest();
+
 }  // namespace laserSensorInternal
