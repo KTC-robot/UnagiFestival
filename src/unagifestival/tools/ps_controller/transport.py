@@ -62,7 +62,7 @@ class Im920Transport:
             self._logger.warning("[ROBOT] SKIP command too long: %s", command)
             return
 
-        self._logger.info("[ROBOT] SEND %s -> %s", label, command)
+        self._logger.debug("[ROBOT] SEND %s -> %s", label, command)
 
         try:
             self._im920.Write_920(command)

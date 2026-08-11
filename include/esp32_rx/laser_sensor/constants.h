@@ -8,14 +8,14 @@
 
 constexpr int LASER_SENSOR_COUNT = 3;
 
-constexpr int LASER_SENSOR_FRONT = 0;
-constexpr int LASER_SENSOR_CENTER = 1;
-constexpr int LASER_SENSOR_REAR = 2;
+constexpr int LASER_SENSOR_FRONT = 1;
+constexpr int LASER_SENSOR_CENTER = 2;
+constexpr int LASER_SENSOR_REAR = 0;
 
 constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
-    true,   // FRONT  CH0
-    true,  // CENTER CH1
-    true   // REAR   CH2
+    true,   // FRONT  CH1
+    true,  // CENTER CH2
+    true   // REAR   CH0
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {

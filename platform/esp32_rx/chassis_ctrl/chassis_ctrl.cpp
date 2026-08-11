@@ -9,7 +9,7 @@
 using namespace CanConfig_chassis_ctrl;
 
 namespace {
-int drivePowerPercent = 20;
+int drivePowerPercent = 80;
 bool motorsActive = false;
 float longitudinalCommand = 0.0f;
 
