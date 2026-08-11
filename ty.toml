@@ -7,3 +7,4 @@ exclude = [
 
 [environment]
 python = ".venv"
+extra-paths = ["type_stubs"]

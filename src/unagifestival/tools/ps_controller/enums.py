@@ -10,7 +10,7 @@ from evdev import ecodes
 
 
 class EventType(IntEnum):
-    """evdevのイベントタイプ。"""
+    """evdevのイベントタイプ."""
 
     SYN = ecodes.EV_SYN
     KEY = ecodes.EV_KEY
@@ -18,7 +18,7 @@ class EventType(IntEnum):
 
 
 class AxisType(Enum):
-    """ABSイベントの軸種別。"""
+    """ABSイベントの軸種別."""
 
     STICK = "STICK"
     TRIGGER = "TRIGGER"
@@ -26,7 +26,7 @@ class AxisType(Enum):
 
 
 class AxisCode(Enum):
-    """アナログ軸のevdevコードと軸種別。"""
+    """アナログ軸のevdevコードと軸種別."""
 
     LEFT_STICK_X = (ecodes.ABS_X, AxisType.STICK)
     LEFT_STICK_Y = (ecodes.ABS_Y, AxisType.STICK)
@@ -65,14 +65,14 @@ class AxisCode(Enum):
 
 
 class ButtonState(IntEnum):
-    """evdevが通知するボタン状態。"""
+    """evdevが通知するボタン状態."""
 
     RELEASED = 0
     PRESSED = 1
 
 
 class ButtonCode(Enum):
-    """PS5ボタンに対応するLinux evdevコード。"""
+    """PS5ボタンに対応するLinux evdevコード."""
 
     CROSS_BTN = ecodes.BTN_SOUTH
     CIRCLE_BTN = ecodes.BTN_EAST
@@ -91,17 +91,17 @@ class ButtonCode(Enum):
 
     @property
     def code(self) -> int:
-        """Linux evdevコードを返す。"""
+        """Linux evdevコードを返す."""
         return int(self.value)
 
     @property
     def display_name(self) -> str:
-        """ログ表示用の名前。例: SQUARE_BTN -> SQUARE"""
+        """ログ表示用の名前。例: SQUARE_BTN -> SQUARE."""
         return self.name.removesuffix("_BTN")
 
     @classmethod
     def get_by_code(cls, code: int) -> Self | None:
-        """Linuxのevdevコードからボタンを取得する。"""
+        """Linuxのevdevコードからボタンを取得する."""
         for button in cls:
             if button.code == code:
                 return button
@@ -110,7 +110,7 @@ class ButtonCode(Enum):
 
 @dataclass(frozen=True)
 class ButtonEvent:
-    """ボタン種別と押下状態を組み合わせた入力イベント。"""
+    """ボタン種別と押下状態を組み合わせた入力イベント."""
 
     code: ButtonCode
     state: ButtonState

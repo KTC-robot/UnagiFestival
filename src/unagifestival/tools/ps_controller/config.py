@@ -1,6 +1,13 @@
 from typing import Final
 
 from unagifestival.tools.ps_controller.enums import ButtonCode
+from unagifestival.tools.ps_controller.models import (
+    ServoAction,
+    ServoActionMap,
+    ServoChannelConfig,
+    ServoToggleAction,
+    ServoToggleActionMap,
+)
 
 # ============================================================
 # 既存設定
@@ -38,7 +45,6 @@ TX_LED_PULSE_SEC: Final[float] = 0.02
 
 STICK_DEADZONE: Final[float] = 0.08
 STICK_SEND_MAX: Final[int] = 127
-TRIGGER_SEND_MAX: Final[int] = 255
 
 
 # ============================================================
@@ -47,35 +53,23 @@ TRIGGER_SEND_MAX: Final[int] = 255
 
 SERVO_CHANNEL_COUNT: Final[int] = 16
 
-# CH0、CH1、CH2を使用。
-# サーボを追加したら、対応チャンネルをTrueへ変更する。
-SERVO_ENABLED: Final[tuple[bool, ...]] = (
-    True,  True,  True,  False,  # CH0～CH3
-    False, False, False, False,  # CH4～CH7
-    False, False, False, False,  # CH8～CH11
-    False, False, False, False,  # CH12～CH15
-)
-
-# ラズパイ側でも送信角度を安全範囲へ制限する。
-SERVO_MIN_ANGLE: Final[tuple[int, ...]] = (
-    0, 0, 0, 0,
-    0, 0, 0, 0,
-    0, 0, 0, 0,
-    0, 0, 0, 0,
-)
-
-SERVO_MAX_ANGLE: Final[tuple[int, ...]] = (
-    180, 180, 180, 180,
-    180, 180, 180, 180,
-    180, 180, 180, 180,
-    180, 180, 180, 180,
-)
-
-SERVO_HOME_ANGLE: Final[tuple[int, ...]] = (
-    90, 90, 90, 90,
-    90, 90, 90, 90,
-    90, 90, 90, 90,
-    90, 90, 90, 90,
+SERVO_CHANNELS: Final[tuple[ServoChannelConfig, ...]] = (
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
 )
 
 # Trueにすると、ラズパイ側プログラム起動時に
@@ -87,32 +81,21 @@ SERVO_SEND_HOME_ON_START: Final[bool] = False
 # ============================================================
 # ボタンを押すと指定角度へ動かす
 # ============================================================
-#
-# 形式:
-#   ButtonCode: ((channel, angle), ...)
-#
-# enums.pyのButtonCodeを使用する。
-#
 # CROSS、L1、R1、PSは足回りで使用するため、
 # サーボへ割り当てない。
-SERVO_BUTTON_ACTIONS: Final[
-    dict[ButtonCode, tuple[tuple[int, int], ...]]
-] = {
-    ButtonCode.SQUARE_BTN: ((2, 60),),
-    ButtonCode.TRIANGLE_BTN: ((2, 120),),
-    ButtonCode.CIRCLE_BTN: ((1, 90),),
-    ButtonCode.OPTIONS_BTN: ((1, 0),),
+SERVO_BUTTON_ACTIONS: Final[ServoActionMap] = {
+    ButtonCode.SQUARE_BTN: (ServoAction(channel=2, angle=60),),
+    ButtonCode.TRIANGLE_BTN: (ServoAction(channel=2, angle=120),),
+    ButtonCode.CIRCLE_BTN: (ServoAction(channel=1, angle=90),),
+    ButtonCode.OPTIONS_BTN: (ServoAction(channel=1, angle=0),),
 }
 
 
 # ============================================================
 # ボタンを押すたびに2つの角度を切り替える
 # ============================================================
-#
-# 形式:
-#   ButtonCode: ((channel, angle_a, angle_b), ...)
-SERVO_TOGGLE_ACTIONS: Final[
-    dict[ButtonCode, tuple[tuple[int, int, int], ...]]
-] = {
-    ButtonCode.L2_BTN: ((0, 0, 180),),
+SERVO_TOGGLE_ACTIONS: Final[ServoToggleActionMap] = {
+    ButtonCode.L2_BTN: (
+        ServoToggleAction(channel=0, angle_a=0, angle_b=180),
+    ),
 }

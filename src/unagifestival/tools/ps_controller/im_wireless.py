@@ -1,36 +1,37 @@
-# -*- coding: utf-8 -*-
+"""GPIOポーリングでIM920-HATを制御するドライバー."""
 
-"""
-im_wireless.py : IM920-HAT用ライブラリ
-GPIO割り込みを使わず、ポーリングで受信確認する版
-"""
-
+import contextlib
 import time
-import smbus
-import RPi.GPIO as GPIO
 
+from typing import Final
+
+import smbus
+
+from RPi import GPIO
 
 # ピンアサイン BCM
-IRQ_PIN = 17       # PIC I2C割り込みピン
-XMIT_PIN = 18      # 送信中出力ピン
-SLEEP_PIN = 22     # スリープピン
-RESET_PIN = 23     # リセットピン
-BUSY_PIN = 27      # BUSYピン
+IRQ_PIN: Final[int] = 17  # PIC I2C割り込みピン
+XMIT_PIN: Final[int] = 18  # 送信中出力ピン
+SLEEP_PIN: Final[int] = 22  # スリープピン
+RESET_PIN: Final[int] = 23  # リセットピン
+BUSY_PIN: Final[int] = 27  # BUSYピン
 
-RXBUF_MAXSIZE = 0x400
+RXBUF_MAXSIZE: Final[int] = 0x400
 
 
 class IMWireClass:
-    def __init__(self, sladr):
+    """IM920-HATをI2C経由で制御するラッパー."""
+
+    def __init__(self, slave_address: int) -> None:
         self.rxbuf_head = 0
         self.rxbuf_tail = 0
         self.rxbuf_num = 0
         self.rxbuf_maxsize = RXBUF_MAXSIZE
-        self.i2c_rxbuf = [0] * self.rxbuf_maxsize
+        self.i2c_rxbuf: list[str] = [""] * self.rxbuf_maxsize
 
-        self.slave_adr = sladr
+        self.slave_adr = slave_address
 
-        GPIO.setwarnings(False)
+        GPIO.setwarnings(flag=False)
         GPIO.setmode(GPIO.BCM)
 
         GPIO.setup(RESET_PIN, GPIO.OUT)
@@ -41,74 +42,75 @@ class IMWireClass:
 
         GPIO.output(RESET_PIN, 1)
 
-        self.i2c = smbus.SMBus(1)
+        self.i2c: smbus.SMBus = smbus.SMBus(1)
 
         # 変換ICのバッファ初期化
         for _ in range(300):
-            try:
+            with contextlib.suppress(OSError):
                 self.i2c.read_byte(self.slave_adr)
-            except OSError:
-                pass
 
         self.Reboot_920()
 
-    def Reboot_920(self):
+    # 以下の公開メソッド名は既存IM920ドライバーAPIとの互換性を保つ。
+    def Reboot_920(self) -> None:  # noqa: N802
+        """IM920-HATをハードウェアリセットする."""
         GPIO.output(RESET_PIN, 0)
         time.sleep(0.5)
         GPIO.output(RESET_PIN, 1)
         time.sleep(0.5)
 
-    def Write_920(self, cmd):
-        if len(cmd) == 0:
+    def Write_920(self, command: str) -> None:  # noqa: N802
+        """IM920-HATへ指定したコマンドを送信する."""
+        if not command:
             return
 
-        if cmd[0] != '?':
+        if command[0] != "?":
             while self.busy_status():
                 time.sleep(0.001)
 
         self.i2c.write_i2c_block_data(
             self.slave_adr,
             0,
-            [ord(i) for i in cmd]
+            [ord(character) for character in command],
         )
 
-    def Read_920(self):
-        # 割り込みではなく、ここでIRQピンを確認する
+    def Read_920(self) -> str:  # noqa: N802
+        """IM920-HATから受信済みの1フレームを読み出す."""
         if GPIO.input(IRQ_PIN) == GPIO.HIGH:
             self._read_from_i2c()
 
-        buf = ""
+        buffer = ""
 
         if self.rxbuf_num >= 1:
-            buf = self.i2c_rxbuf[self.rxbuf_head]
+            buffer = self.i2c_rxbuf[self.rxbuf_head]
 
             self.rxbuf_head += 1
             self.rxbuf_head &= self.rxbuf_maxsize - 1
             self.rxbuf_num -= 1
 
-        return buf
+        return buffer
 
-    def _read_from_i2c(self):
+    def _read_from_i2c(self) -> None:
         try:
-            i2c_rxlen = self.i2c.read_byte(self.slave_adr)
+            received_length = self.i2c.read_byte(self.slave_adr)
         except OSError:
             return
 
-        if i2c_rxlen < 1:
+        if received_length < 1:
             return
 
-        buf = ""
+        buffer = ""
 
-        while i2c_rxlen >= 1:
+        while received_length >= 1:
             try:
-                buf += chr(self.i2c.read_byte(self.slave_adr))
+                buffer += chr(self.i2c.read_byte(self.slave_adr))
             except OSError:
                 break
 
-            i2c_rxlen -= 1
+            received_length -= 1
 
-        if buf:
-            self.i2c_rxbuf[self.rxbuf_tail] = buf
+        if buffer:
+            self.i2c_rxbuf[self.rxbuf_tail] = buffer
 
             self.rxbuf_tail += 1
             self.rxbuf_tail &= self.rxbuf_maxsize - 1
@@ -120,21 +122,23 @@ class IMWireClass:
                 self.rxbuf_head += 1
                 self.rxbuf_head &= self.rxbuf_maxsize - 1
 
-    def irq_intrpt(self, gpio):
-        # 互換性用に残しているだけ
+    def irq_intrpt(self, _gpio: int) -> None:
+        """IRQ割り込みと同じ受信処理を行う互換用callback."""
         self._read_from_i2c()
 
-    def slp_intrpt(self, gpio):
-        pass
+    def slp_intrpt(self, _gpio: int) -> None:
+        """旧スリープ割り込みAPIとの互換用callback."""
 
-    def xmit_intrpt(self, gpio):
-        pass
+    def xmit_intrpt(self, _gpio: int) -> None:
+        """旧送信割り込みAPIとの互換用callback."""
 
-    def remove_interrupt(self, port):
-        pass
+    def remove_interrupt(self, _port: int) -> None:
+        """旧割り込み解除APIとの互換用メソッド."""
 
-    def busy_status(self):
+    def busy_status(self) -> int:
+        """IM920-HATのBUSYピン状態を返す."""
         return GPIO.input(BUSY_PIN)
 
-    def gpio_clean(self):
+    def gpio_clean(self) -> None:
+        """GPIOの使用を終了する."""
         GPIO.cleanup()

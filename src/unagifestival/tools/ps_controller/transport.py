@@ -4,7 +4,19 @@ from collections.abc import Callable
 from enum import IntEnum
 from typing import Protocol
 
-from unagifestival.tools.ps_controller.robot_api import ControlCommand
+from unagifestival.tools.ps_controller.models import (
+    DriveCommand,
+    ServoSetCommand,
+)
+
+
+class ControlCommand(IntEnum):
+    """ESP32 Control APIのwire command ID."""
+
+    STOP = 0x01
+    EMERGENCY_STOP = 0x02
+    CHANGE_POWER = 0x03
+    DRIVE = 0x04
 
 
 class Im920Device(Protocol):
@@ -62,16 +74,31 @@ class Im920Transport:
                 exc_info=True,
             )
 
-    def send_control(self, command: ControlCommand, *parameters: int) -> None:
+    def _send_control(self, command: ControlCommand, parameters: str = "") -> None:
         payload = self._byte_to_hex(PacketType.CONTROL)
         payload += self._byte_to_hex(command)
-        payload += "".join(self._byte_to_hex(value) for value in parameters)
+        payload += parameters
         self._send_payload(payload, f"CONTROL {command.name}")
 
-    def send_servo_set(self, channel: int, angle: int) -> None:
+    def send_stop(self) -> None:
+        self._send_control(ControlCommand.STOP)
+
+    def send_emergency_stop(self) -> None:
+        self._send_control(ControlCommand.EMERGENCY_STOP)
+
+    def send_change_power(self, delta: int) -> None:
+        self._send_control(ControlCommand.CHANGE_POWER, self._byte_to_hex(delta))
+
+    def send_drive(self, command: DriveCommand) -> None:
+        parameters = self._byte_to_hex(command.vx)
+        parameters += self._byte_to_hex(command.vy)
+        parameters += self._byte_to_hex(command.wz)
+        self._send_control(ControlCommand.DRIVE, parameters)
+
+    def send_servo_set(self, command: ServoSetCommand) -> None:
         payload = self._byte_to_hex(PacketType.SERVO_SET)
-        payload += self._byte_to_hex(channel)
-        payload += self._byte_to_hex(angle)
+        payload += self._byte_to_hex(command.channel)
+        payload += self._byte_to_hex(command.angle)
         self._send_payload(payload, "SERVO_SET")
 
     def read(self) -> str:

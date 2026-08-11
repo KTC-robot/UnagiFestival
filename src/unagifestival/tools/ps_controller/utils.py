@@ -1,15 +1,9 @@
-from typing import Protocol
-
 from unagifestival.tools.ps_controller.config import (
     AXIS_NORMALIZED_CENTER,
     AXIS_NORMALIZED_MAX,
     AXIS_NORMALIZED_MIN,
 )
-
-
-class AxisInfo(Protocol):
-    min: int
-    max: int
+from unagifestival.tools.ps_controller.models import AxisInfo
 
 
 def clamp_value(value: float, minimum: float, maximum: float) -> float:

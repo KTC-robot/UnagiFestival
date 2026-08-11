@@ -1,22 +1,23 @@
-from enum import IntEnum
 from typing import Protocol
 
-
-class ControlCommand(IntEnum):
-    """ESP32 Control APIのコマンドID."""
-
-    STOP = 0x01
-    EMERGENCY_STOP = 0x02
-    CHANGE_POWER = 0x03
-    DRIVE = 0x04
+from unagifestival.tools.ps_controller.models import (
+    DriveCommand,
+    ServoSetCommand,
+)
 
 
 class RobotTransport(Protocol):
     """意味コマンドをwire protocolへ送るtransport."""
 
-    def send_control(self, command: ControlCommand, *parameters: int) -> None: ...
+    def send_stop(self) -> None: ...
 
-    def send_servo_set(self, channel: int, angle: int) -> None: ...
+    def send_emergency_stop(self) -> None: ...
+
+    def send_change_power(self, delta: int) -> None: ...
+
+    def send_drive(self, command: DriveCommand) -> None: ...
+
+    def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
 
 class RobotApi:
@@ -26,16 +27,16 @@ class RobotApi:
         self._transport = transport
 
     def stop(self) -> None:
-        self._transport.send_control(ControlCommand.STOP)
+        self._transport.send_stop()
 
     def emergency_stop(self) -> None:
-        self._transport.send_control(ControlCommand.EMERGENCY_STOP)
+        self._transport.send_emergency_stop()
 
     def change_power(self, delta: int) -> None:
-        self._transport.send_control(ControlCommand.CHANGE_POWER, delta)
+        self._transport.send_change_power(delta)
 
-    def drive(self, vx: int, vy: int, wz: int) -> None:
-        self._transport.send_control(ControlCommand.DRIVE, vx, vy, wz)
+    def drive(self, command: DriveCommand) -> None:
+        self._transport.send_drive(command)
 
-    def set_servo(self, channel: int, angle: int) -> None:
-        self._transport.send_servo_set(channel, angle)
+    def set_servo(self, command: ServoSetCommand) -> None:
+        self._transport.send_servo_set(command)

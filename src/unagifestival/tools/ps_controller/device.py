@@ -1,10 +1,21 @@
+import logging
 import select
 
+from collections.abc import Collection, Sequence
 from typing import Final
 
 from evdev import InputDevice, ecodes, list_devices
 
-from unagifestival.tools.ps_controller.handler import logger
+from unagifestival.tools.ps_controller.models import (
+    AxisInfo,
+    AxisInfoMap,
+    EventCode,
+)
+
+logger = logging.getLogger("teensy_log")
+
+type AbsoluteCapabilityEntry = EventCode | tuple[EventCode, AxisInfo]
+type SelectResult = tuple[list[int], list[int], list[int]]
 
 
 # ===== Controller Scoring Constants =====
@@ -16,6 +27,21 @@ SCORE_BTN_SECONDARY: Final[int] = 1
 SCORE_NAME_EXACT: Final[int] = 6
 SCORE_NAME_PARTIAL: Final[int] = 3
 PENALTY_IGNORED_DEVICE: Final[int] = -100
+
+AXIS_SCORES: Final[dict[EventCode, int]] = {
+    ecodes.ABS_X: SCORE_AXIS_PRIMARY,
+    ecodes.ABS_Y: SCORE_AXIS_PRIMARY,
+    ecodes.ABS_RX: SCORE_AXIS_PRIMARY,
+    ecodes.ABS_RY: SCORE_AXIS_PRIMARY,
+    ecodes.ABS_HAT0X: SCORE_AXIS_SECONDARY,
+    ecodes.ABS_HAT0Y: SCORE_AXIS_SECONDARY,
+}
+BUTTON_SCORES: Final[dict[EventCode, int]] = {
+    ecodes.BTN_SOUTH: SCORE_BTN_PRIMARY,
+    ecodes.BTN_EAST: SCORE_BTN_SECONDARY,
+    ecodes.BTN_NORTH: SCORE_BTN_SECONDARY,
+    ecodes.BTN_WEST: SCORE_BTN_SECONDARY,
+}
 
 
 # ===== Device Name Keywords =====
@@ -29,8 +55,8 @@ KEYWORD_MOTION: Final[str] = "motion"
 
 def _calculate_device_score(
     device_name: str,
-    absolute_codes: set,
-    key_codes: set,
+    absolute_codes: Collection[EventCode],
+    key_codes: Collection[EventCode],
 ) -> int:
     """デバイスが持つ機能や名前に基づいてスコアを算出する."""
     score = 0
@@ -38,27 +64,12 @@ def _calculate_device_score(
     if KEYWORD_TOUCHPAD in device_name or KEYWORD_MOTION in device_name:
         score += PENALTY_IGNORED_DEVICE
 
-    if ecodes.ABS_X in absolute_codes:
-        score += SCORE_AXIS_PRIMARY
-    if ecodes.ABS_Y in absolute_codes:
-        score += SCORE_AXIS_PRIMARY
-    if ecodes.ABS_RX in absolute_codes:
-        score += SCORE_AXIS_PRIMARY
-    if ecodes.ABS_RY in absolute_codes:
-        score += SCORE_AXIS_PRIMARY
-    if ecodes.ABS_HAT0X in absolute_codes:
-        score += SCORE_AXIS_SECONDARY
-    if ecodes.ABS_HAT0Y in absolute_codes:
-        score += SCORE_AXIS_SECONDARY
-
-    if ecodes.BTN_SOUTH in key_codes:
-        score += SCORE_BTN_PRIMARY
-    if ecodes.BTN_EAST in key_codes:
-        score += SCORE_BTN_SECONDARY
-    if ecodes.BTN_NORTH in key_codes:
-        score += SCORE_BTN_SECONDARY
-    if ecodes.BTN_WEST in key_codes:
-        score += SCORE_BTN_SECONDARY
+    score += sum(
+        weight for code, weight in AXIS_SCORES.items() if code in absolute_codes
+    )
+    score += sum(
+        weight for code, weight in BUTTON_SCORES.items() if code in key_codes
+    )
 
     if KEYWORD_WIRELESS in device_name:
         score += SCORE_NAME_EXACT
@@ -75,7 +86,7 @@ def find_controller() -> InputDevice | None:
 
     コントローラーが接続されていない場合はエラーにせず None を返す.
     """
-    best_device = None
+    best_device: InputDevice | None = None
     best_score = -1
 
     for device_path in list_devices():
@@ -90,7 +101,10 @@ def find_controller() -> InputDevice | None:
             )
             continue
 
-        absolute_entries = capabilities.get(ecodes.EV_ABS, [])
+        absolute_entries: Sequence[AbsoluteCapabilityEntry] = capabilities.get(
+            ecodes.EV_ABS,
+            [],
+        )
         key_entries = capabilities.get(ecodes.EV_KEY, [])
 
         absolute_codes = {
@@ -126,14 +140,11 @@ def find_controller() -> InputDevice | None:
     return best_device
 
 
-def get_absolute_axis_info(device: InputDevice | None) -> dict:
+def get_absolute_axis_info(device: InputDevice) -> AxisInfoMap:
     """デバイスの絶対軸 (ABS) 情報を取得する."""
-    if device is None:
-        return {}
-
     capabilities = device.capabilities(absinfo=True)
 
-    axis_information_map = {}
+    axis_information_map: AxisInfoMap = {}
 
     for entry in capabilities.get(ecodes.EV_ABS, []):
         if isinstance(entry, tuple):
@@ -144,17 +155,17 @@ def get_absolute_axis_info(device: InputDevice | None) -> dict:
 
 
 def wait_for_input_ready(
-    file_descriptors: list,
+    file_descriptors: Sequence[int],
     timeout_seconds: float = 0.0,
-) -> tuple:
+) -> SelectResult:
     """指定されたファイルディスクリプタが読み取り可能になるまで待機する."""
-
     if not file_descriptors:
         return ([], [], [])
 
-    return select.select(
-        file_descriptors,
+    readable, writable, exceptional = select.select(
+        list(file_descriptors),
         [],
         [],
         timeout_seconds,
     )
+    return list(readable), list(writable), list(exceptional)

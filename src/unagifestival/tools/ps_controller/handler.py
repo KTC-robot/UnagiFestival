@@ -2,9 +2,8 @@ import logging
 import re
 import time
 
-import RPi.GPIO as GPIO
-
 from evdev import ecodes
+from RPi import GPIO
 
 from unagifestival.tools.ps_controller import im_wireless as imw
 from unagifestival.tools.ps_controller.config import (
@@ -14,16 +13,12 @@ from unagifestival.tools.ps_controller.config import (
     LED_PIN,
     SERVO_BUTTON_ACTIONS,
     SERVO_CHANNEL_COUNT,
-    SERVO_ENABLED,
-    SERVO_HOME_ANGLE,
-    SERVO_MAX_ANGLE,
-    SERVO_MIN_ANGLE,
+    SERVO_CHANNELS,
     SERVO_SEND_HOME_ON_START,
     SERVO_TOGGLE_ACTIONS,
     SLAVE_ADR,
     STICK_DEADZONE,
     STICK_SEND_MAX,
-    TRIGGER_SEND_MAX,
     TX_LED_PULSE_SEC,
 )
 from unagifestival.tools.ps_controller.enums import (
@@ -31,15 +26,25 @@ from unagifestival.tools.ps_controller.enums import (
     ButtonEvent,
     ButtonState,
 )
+from unagifestival.tools.ps_controller.models import (
+    AxisInfo,
+    ControllerState,
+    DriveCommand,
+    ServoAction,
+    ServoSetCommand,
+    ServoToggleKey,
+)
 from unagifestival.tools.ps_controller.robot_api import RobotApi
 from unagifestival.tools.ps_controller.transport import Im920Transport
 
-logger = logging.getLogger("teensy_log")
+logger = logging.getLogger("unagi_log")
 
+MIN_HEX_TEXT_LENGTH = 2
+MAX_SERVO_ANGLE = 180
 
 
 class RobotHandler:
-    """PS5コントローラー入力を意味のあるロボット操作へ変換する。"""
+    """PS5コントローラー入力を意味のあるロボット操作へ変換する."""
 
     def __init__(self) -> None:
         logger.info("[ROBOT] IM920-HAT initializing...")
@@ -57,7 +62,7 @@ class RobotHandler:
             logger,
         )
         self.robot = RobotApi(self.transport)
-        self.servo_toggle_state: dict[tuple[ButtonCode, int], bool] = {}
+        self.servo_toggle_state: dict[ServoToggleKey, bool] = {}
 
         self._validate_servo_config()
 
@@ -74,12 +79,12 @@ class RobotHandler:
 
         try:
             GPIO.output(LED_PIN, GPIO.LOW)
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("[ROBOT] LED off failed", exc_info=True)
 
         try:
             self.transport.cleanup()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("[ROBOT] GPIO cleanup failed", exc_info=True)
 
     # ============================================================
@@ -99,8 +104,8 @@ class RobotHandler:
             self.tx_led_off_at = 0.0
 
     @staticmethod
-    def _normalize_axis(value: int, axis_info) -> int:
-        """スティック入力を -127 ～ 127 に変換する。"""
+    def _normalize_axis(value: int, axis_info: AxisInfo | None) -> int:
+        """スティック入力を -127 ~ 127 に変換する."""
         if axis_info is None:
             return 0
 
@@ -123,23 +128,6 @@ class RobotHandler:
         return int(normalized * STICK_SEND_MAX)
 
     @staticmethod
-    def _normalize_trigger(value: int, axis_info) -> int:
-        """L2/R2トリガーを 0 ～ 255 に変換する。"""
-        if axis_info is None:
-            return 0
-
-        min_v = axis_info.min
-        max_v = axis_info.max
-
-        if max_v == min_v:
-            return 0
-
-        normalized = (value - min_v) / (max_v - min_v)
-        normalized = max(0.0, min(1.0, normalized))
-
-        return int(normalized * TRIGGER_SEND_MAX)
-
-    @staticmethod
     def _normalize_im920_data(data: str) -> str:
         return "".join(chr(ord(c) & 0x7F) for c in data)
 
@@ -159,7 +147,7 @@ class RobotHandler:
         payload = line.split(":", 1)[1]
         payload = re.sub(r"[^0-9A-Fa-f]", "", payload)
 
-        if len(payload) < 2:
+        if len(payload) < MIN_HEX_TEXT_LENGTH:
             return ""
 
         return self._hex_to_text(payload)
@@ -167,7 +155,7 @@ class RobotHandler:
     def _poll_im920_response(self) -> None:
         try:
             data = self.transport.read()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning("[ROBOT] IM920 read failed", exc_info=True)
             return
 
@@ -186,7 +174,7 @@ class RobotHandler:
 
         if rx_text:
             logger.info("[ROBOT] ESP32 TEXT <- %s", rx_text)
-            print("ESP32 <-", rx_text)
+            print("ESP32 <-", rx_text)  # noqa: T201
 
     # ============================================================
     # Servo configuration / control
@@ -194,39 +182,36 @@ class RobotHandler:
 
     @staticmethod
     def _validate_servo_config() -> None:
-        """16チャンネル分の設定が揃っているか起動時に確認する。"""
-        settings = {
-            "SERVO_ENABLED": SERVO_ENABLED,
-            "SERVO_MIN_ANGLE": SERVO_MIN_ANGLE,
-            "SERVO_MAX_ANGLE": SERVO_MAX_ANGLE,
-            "SERVO_HOME_ANGLE": SERVO_HOME_ANGLE,
-        }
+        """16チャネル分の設定とボタン操作を起動時に検証する."""
+        if len(SERVO_CHANNELS) != SERVO_CHANNEL_COUNT:
+            message = (
+                f"SERVO_CHANNELS must contain {SERVO_CHANNEL_COUNT} values, "
+                f"but contains {len(SERVO_CHANNELS)}"
+            )
+            raise ValueError(message)
 
-        for name, values in settings.items():
-            if len(values) != SERVO_CHANNEL_COUNT:
-                raise ValueError(
-                    f"{name} must contain {SERVO_CHANNEL_COUNT} values, "
-                    f"but contains {len(values)}"
-                )
-
-        for channel in range(SERVO_CHANNEL_COUNT):
-            minimum = SERVO_MIN_ANGLE[channel]
-            maximum = SERVO_MAX_ANGLE[channel]
-            home = SERVO_HOME_ANGLE[channel]
-
-            if not 0 <= minimum <= maximum <= 180:
-                raise ValueError(
+        for channel, config in enumerate(SERVO_CHANNELS):
+            if not 0 <= config.min_angle <= config.max_angle <= MAX_SERVO_ANGLE:
+                message = (
                     f"Invalid servo angle range: CH{channel} "
-                    f"min={minimum} max={maximum}"
+                    f"min={config.min_angle} max={config.max_angle}"
                 )
+                raise ValueError(message)
 
-            if not minimum <= home <= maximum:
-                raise ValueError(
-                    f"SERVO_HOME_ANGLE[{channel}]={home} is outside "
-                    f"{minimum}..{maximum}"
+            if not config.min_angle <= config.home_angle <= config.max_angle:
+                message = (
+                    f"Servo home angle is outside the range: CH{channel} "
+                    f"home={config.home_angle} "
+                    f"range={config.min_angle}..{config.max_angle}"
                 )
+                raise ValueError(message)
 
-        valid_buttons = set(ButtonCode)
+        RobotHandler._validate_servo_actions()
+        RobotHandler._warn_duplicate_servo_actions()
+
+    @staticmethod
+    def _validate_servo_actions() -> None:
+        """ボタンに割り当てられた全サーボ操作を検証する."""
         drive_reserved_buttons = {
             ButtonCode.CROSS_BTN,
             ButtonCode.L1_BTN,
@@ -235,48 +220,38 @@ class RobotHandler:
         }
 
         for button, actions in SERVO_BUTTON_ACTIONS.items():
-            if button not in valid_buttons:
-                raise ValueError(
-                    f"Invalid servo button: {button}"
-                )
-
             if button in drive_reserved_buttons:
                 logger.warning(
                     "[SERVO] Button %s is also used by chassis control.",
                     button.display_name,
                 )
 
-            for channel, angle in actions:
-                RobotHandler._validate_servo_action(
+            for action in actions:
+                RobotHandler._validate_servo_target(
                     button,
-                    channel,
-                    angle,
+                    ServoSetCommand(action.channel, action.angle),
                 )
 
         for button, actions in SERVO_TOGGLE_ACTIONS.items():
-            if button not in valid_buttons:
-                raise ValueError(
-                    f"Invalid servo toggle button: {button}"
-                )
-
             if button in drive_reserved_buttons:
                 logger.warning(
                     "[SERVO] Button %s is also used by chassis control.",
                     button.display_name,
                 )
 
-            for channel, angle_a, angle_b in actions:
-                RobotHandler._validate_servo_action(
+            for action in actions:
+                RobotHandler._validate_servo_target(
                     button,
-                    channel,
-                    angle_a,
+                    ServoSetCommand(action.channel, action.angle_a),
                 )
-                RobotHandler._validate_servo_action(
+                RobotHandler._validate_servo_target(
                     button,
-                    channel,
-                    angle_b,
+                    ServoSetCommand(action.channel, action.angle_b),
                 )
 
+    @staticmethod
+    def _warn_duplicate_servo_actions() -> None:
+        """直接操作とtoggle操作の重複割り当てを警告する."""
         duplicate_buttons = (
             set(SERVO_BUTTON_ACTIONS)
             & set(SERVO_TOGGLE_ACTIONS)
@@ -289,106 +264,118 @@ class RobotHandler:
             )
 
     @staticmethod
-    def _validate_servo_action(
+    def _validate_servo_target(
         button: ButtonCode,
-        channel: int,
-        angle: int,
+        command: ServoSetCommand,
     ) -> None:
-        """ボタン割り当てのチャンネルと角度を検証する。"""
-        if not 0 <= channel < SERVO_CHANNEL_COUNT:
-            raise ValueError(
+        """ボタン割り当てのチャネルと角度を検証する."""
+        if not 0 <= command.channel < SERVO_CHANNEL_COUNT:
+            message = (
                 f"Invalid servo channel: button={button.display_name} "
-                f"channel={channel}"
+                f"channel={command.channel}"
             )
+            raise ValueError(message)
 
-        if not SERVO_ENABLED[channel]:
-            raise ValueError(
-                f"Servo CH{channel} is assigned to button "
+        config = SERVO_CHANNELS[command.channel]
+
+        if not config.enabled:
+            message = (
+                f"Servo CH{command.channel} is assigned to button "
                 f"{button.display_name}, "
-                "but the channel is disabled in SERVO_ENABLED."
+                "but the channel is disabled in SERVO_CHANNELS."
             )
+            raise ValueError(message)
 
-        minimum = SERVO_MIN_ANGLE[channel]
-        maximum = SERVO_MAX_ANGLE[channel]
-
-        if not minimum <= angle <= maximum:
-            raise ValueError(
+        if not config.min_angle <= command.angle <= config.max_angle:
+            message = (
                 f"Servo angle is outside the configured range: "
-                f"button={button.display_name} CH{channel} angle={angle} "
-                f"range={minimum}..{maximum}"
+                f"button={button.display_name} CH{command.channel} "
+                f"angle={command.angle} "
+                f"range={config.min_angle}..{config.max_angle}"
             )
+            raise ValueError(message)
 
-    def _send_servo(self, channel: int, angle: int) -> None:
-        """PCA9685の指定チャンネルを指定角度へ動かす。"""
-        if not 0 <= channel < SERVO_CHANNEL_COUNT:
-            logger.warning("[SERVO] Invalid channel: %d", channel)
+    def _send_servo(self, command: ServoSetCommand) -> None:
+        """PCA9685の指定チャネルを指定角度へ動かす."""
+        if not 0 <= command.channel < SERVO_CHANNEL_COUNT:
+            logger.warning("[SERVO] Invalid channel: %d", command.channel)
             return
 
-        if not SERVO_ENABLED[channel]:
+        config = SERVO_CHANNELS[command.channel]
+
+        if not config.enabled:
             logger.warning(
-                "[SERVO] CH%d is disabled. Set SERVO_ENABLED[%d] to True.",
-                channel,
-                channel,
+                "[SERVO] CH%d is disabled in SERVO_CHANNELS.",
+                command.channel,
             )
             return
 
-        angle = max(
-            SERVO_MIN_ANGLE[channel],
-            min(SERVO_MAX_ANGLE[channel], angle),
+        clamped_command = ServoSetCommand(
+            channel=command.channel,
+            angle=max(
+                config.min_angle,
+                min(config.max_angle, command.angle),
+            ),
         )
 
-        logger.info("[SERVO] SEND CH=%d ANGLE=%d", channel, angle)
-        self.robot.set_servo(channel, angle)
+        logger.info(
+            "[SERVO] SEND CH=%d ANGLE=%d",
+            clamped_command.channel,
+            clamped_command.angle,
+        )
+        self.robot.set_servo(clamped_command)
 
     def _send_servo_home_positions(self) -> None:
-        """有効な全チャンネルを待機角度へ移動する。"""
-        for channel in range(SERVO_CHANNEL_COUNT):
-            if SERVO_ENABLED[channel]:
-                self._send_servo(channel, SERVO_HOME_ANGLE[channel])
+        """有効な全チャネルを待機角度へ移動する."""
+        for channel, config in enumerate(SERVO_CHANNELS):
+            if config.enabled:
+                self._send_servo(ServoSetCommand(channel, config.home_angle))
                 time.sleep(0.05)
 
     def _handle_servo_button(self, event: ButtonEvent) -> None:
-        """設定されたボタン操作をサーボ命令へ変換する。"""
+        """設定されたボタン操作をサーボ命令へ変換する."""
         if event.state is not ButtonState.PRESSED:
             return
 
-        for channel, angle in SERVO_BUTTON_ACTIONS.get(event.code, ()):
-            self._send_servo(channel, angle)
+        for action in SERVO_BUTTON_ACTIONS.get(event.code, ()):
+            self._send_servo(self._servo_command(action))
 
         toggle_actions = SERVO_TOGGLE_ACTIONS.get(event.code, ())
 
-        for action_index, (channel, angle_a, angle_b) in enumerate(
-            toggle_actions
-        ):
-            state_key = (event.code, action_index)
+        for action_index, action in enumerate(toggle_actions):
+            state_key = ServoToggleKey(event.code, action_index)
             use_angle_b = self.servo_toggle_state.get(state_key, False)
 
-            angle = angle_b if use_angle_b else angle_a
+            angle = action.angle_b if use_angle_b else action.angle_a
             self.servo_toggle_state[state_key] = not use_angle_b
-            self._send_servo(channel, angle)
+            self._send_servo(ServoSetCommand(action.channel, angle))
+
+    @staticmethod
+    def _servo_command(action: ServoAction) -> ServoSetCommand:
+        return ServoSetCommand(action.channel, action.angle)
 
     # ============================================================
     # Input to robot action
     # ============================================================
 
-    def _make_drive_command(self, raw: dict, info: dict) -> tuple[int, int, int]:
+    def _make_drive_command(self, state: ControllerState) -> DriveCommand:
         lx = self._normalize_axis(
-            raw.get(ecodes.ABS_X, 0),
-            info.get(ecodes.ABS_X),
+            state.axis_values.get(ecodes.ABS_X, 0),
+            state.axis_info.get(ecodes.ABS_X),
         )
 
         ly = self._normalize_axis(
-            raw.get(ecodes.ABS_Y, 0),
-            info.get(ecodes.ABS_Y),
+            state.axis_values.get(ecodes.ABS_Y, 0),
+            state.axis_info.get(ecodes.ABS_Y),
         )
 
         rx = self._normalize_axis(
-            raw.get(ecodes.ABS_RX, 0),
-            info.get(ecodes.ABS_RX),
+            state.axis_values.get(ecodes.ABS_RX, 0),
+            state.axis_info.get(ecodes.ABS_RX),
         )
 
-        dpad_x = raw.get(ecodes.ABS_HAT0X, 0)
-        dpad_y = raw.get(ecodes.ABS_HAT0Y, 0)
+        dpad_x = state.axis_values.get(ecodes.ABS_HAT0X, 0)
+        dpad_y = state.axis_values.get(ecodes.ABS_HAT0Y, 0)
 
         if dpad_x != 0 or dpad_y != 0:
             vx = dpad_y * STICK_SEND_MAX
@@ -406,7 +393,7 @@ class RobotHandler:
             wz,
         )
 
-        return vx, vy, wz
+        return DriveCommand(vx=vx, vy=vy, wz=wz)
 
     def _handle_button_event(self, event: ButtonEvent) -> None:
         if event.state is not ButtonState.PRESSED:
@@ -428,14 +415,12 @@ class RobotHandler:
     def handle_abs(
         self,
         code: int,
-        raw: dict,
-        info: dict,
+        state: ControllerState,
     ) -> None:
         self._update_tx_led()
 
         if code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
-            vx, vy, wz = self._make_drive_command(raw, info)
-            self.robot.drive(vx, vy, wz)
+            self.robot.drive(self._make_drive_command(state))
 
     def handle_key(self, code: int, value: int) -> None:
         self._update_tx_led()
@@ -464,14 +449,18 @@ class RobotHandler:
         self._handle_button_event(event)
         self._handle_servo_button(event)
 
-    def tick(self, now: float, raw: dict, info: dict, last_send: float) -> float:
+    def tick(
+        self,
+        now: float,
+        state: ControllerState,
+        last_send: float,
+    ) -> float:
         self._update_tx_led()
         self._poll_im920_response()
 
         if now - last_send < (1.0 / DRIVE_HZ):
             return last_send
 
-        vx, vy, wz = self._make_drive_command(raw, info)
-        self.robot.drive(vx, vy, wz)
+        self.robot.drive(self._make_drive_command(state))
 
         return now
