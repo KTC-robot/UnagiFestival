@@ -1,6 +1,11 @@
 #pragma once
 
 /**
+ * @file relay_ctrl.hpp
+ * @brief 前後の電磁弁用リレーを制御するAPIを提供する。
+ */
+
+/**
  * @brief リレーGPIOを初期化し、両電磁弁を安全側OFFにする。
  *
  * @return 初期化が完了した場合true。
