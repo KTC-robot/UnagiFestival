@@ -1,6 +1,6 @@
 #include "i2c_bus.hpp"
 
-#include "constants.h"
+#include "i2c/constants.h"
 
 #include <Wire.h>
 

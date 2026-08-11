@@ -1,10 +1,10 @@
 #include "im920_comm.h"
 
-#include "can_comm.h"
-#include "chassis_ctrl.h"
-#include "servo_ctrl.h"
-#include "util.h"
-#include "constants.h"
+#include "can_comm/can_comm.h"
+#include "chassis_ctrl/chassis_ctrl.h"
+#include "servo_ctrl/servo_ctrl.h"
+#include "util/util.h"
+#include "im920_comm/constants.h"
 
 using namespace CanConfig_im920_comm;
 

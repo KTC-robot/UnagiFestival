@@ -1,7 +1,7 @@
-#include "laser_sensor_ctrl.hpp"
+#include "laser_sensor/laser_sensor_ctrl.hpp"
 
-#include "laser_sensor_runtime.hpp"
-#include "laser_sensor_state.hpp"
+#include "laser_sensor/laser_sensor_runtime.hpp"
+#include "laser_sensor/laser_sensor_state.hpp"
 
 #include <Arduino.h>
 

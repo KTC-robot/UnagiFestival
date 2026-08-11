@@ -2,7 +2,7 @@
 
 #include "can_comm.h"
 #include "util.h"
-#include "constants.h"
+#include "chassis_ctrl/constants.h"
 
 #include <math.h>
 
