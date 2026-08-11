@@ -2,6 +2,7 @@
 
 #include "can_comm/can_comm.h"
 #include "chassis_ctrl/chassis_ctrl.h"
+#include "i2c/i2c_bus.hpp"
 #include "im920_comm/im920_comm.h"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
@@ -19,6 +20,10 @@ void setup() {
     Serial.println(
       "WARNING: CAN initialization failed. Motors remain stopped."
     );
+  }
+
+  if (!i2cBusBegin()) {
+    Serial.println("WARNING: shared I2C bus initialization failed.");
   }
 
   servoCtrlBegin();

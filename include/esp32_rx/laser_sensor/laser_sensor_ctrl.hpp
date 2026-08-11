@@ -6,25 +6,19 @@
  * @file laser_sensor_ctrl.hpp
  * @brief レーザーセンサーモジュールの公開制御APIを提供する。
  *
- * TCA9548A経由で接続されたVL53L0X群について、初期化、周期更新、
+ * TCA9548A経由で接続されたVL53L0X群について、バックグラウンドTaskの起動、
  * 測距値取得、接続状態確認を行うための公開インターフェースを定義する。
  */
 
 /**
  * @brief VL53L0X初期化と更新を行う低優先度Taskを起動する。
  *
- * I2CバスとTCA9548Aを初期化した後、設定上有効な各VL53L0Xを順番に初期化する。
+ * 共有I2Cバスは事前にi2cBusBegin()で初期化されていることを前提とする。
+ * Task内でTCA9548Aと各VL53L0Xを初期化し、その後の測距・retryを管理する。
  *
  * @return Taskの起動に成功した場合true。
  */
 bool laserSensorCtrlBegin();
-
-/**
- * @brief レーザーセンサー群の周期処理を更新する。
- *
- * 測距、stale判定、通信異常後の再初期化を内部設定の周期に従って実行する。
- */
-void laserSensorCtrlUpdate();
 
 /**
  * @brief 有効設定されている全センサーが利用可能か確認する。

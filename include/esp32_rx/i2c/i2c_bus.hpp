@@ -2,6 +2,11 @@
 
 #include <Arduino.h>
 
+/**
+ * @file i2c_bus.hpp
+ * @brief VL53L0X/TCA9548A/PCA9685が共有するI2Cバス制御APIを提供する。
+ */
+
 class I2cBusLockGuard {
  public:
   I2cBusLockGuard();
@@ -20,19 +25,18 @@ bool i2cBusLock();
 void i2cBusUnlock();
 
 /**
- * @file i2c_bus.hpp
- * @brief VL53L0X群とTCA9548Aを接続するI2Cバス制御APIを提供する。
- */
-
-/**
- * @brief レーザーセンサー用I2Cバスを初期化する。
+ * @brief 共有I2Cバスを初期化する。
+ *
+ * 通常起動時に1回だけ呼び出す。Wire.end()は行わない。
  *
  * @return 初期化成功時true。
  */
 bool i2cBusBegin();
 
 /**
- * @brief レーザーセンサー用I2Cバスを再初期化する。
+ * @brief bus-level fault発生時に共有I2Cバスを再初期化する。
+ *
+ * Wire.end()とWire.begin()を伴うため、個別デバイスの通常retryには使用しない。
  *
  * @return 再初期化成功時true。
  */
@@ -58,6 +62,12 @@ bool i2cBusDisableAllTcaChannels();
  */
 bool i2cBusSelectTcaChannel(uint8_t channel);
 
+/**
+ * @brief 指定I2Cアドレスへprobeを行う。
+ *
+ * @param address 7bit I2Cアドレス。
+ * @return ACKを受信した場合true。
+ */
 bool i2cBusProbeDevice(uint8_t address);
 
 /**

@@ -9,6 +9,8 @@
 
 /**
  * @brief PCA9685を初期化し、全サーボチャネルをFULL OFFにする。
+ *
+ * 共有I2Cバスは事前にi2cBusBegin()で初期化されていることを前提とする。
  */
 void servoCtrlBegin();
 
@@ -20,9 +22,11 @@ void servoCtrlBegin();
 void servoCtrlDisableAll();
 
 /**
- * @brief I2C bus recovery後にPCA9685の動作設定を再適用する。
+ * @brief I2C bus recovery後にPCA9685設定と直前の出力状態を復元する。
+ *
+ * @return 全チャネルの復元に成功した場合true。
  */
-void servoCtrlRestoreAfterI2cRecovery();
+bool servoCtrlRestoreAfterI2cRecovery();
 
 /**
  * @brief サーボ制御パケットを解析し、指定チャネルへ角度を出力する。

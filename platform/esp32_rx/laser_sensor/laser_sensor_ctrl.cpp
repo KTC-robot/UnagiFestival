@@ -18,6 +18,7 @@ void laserSensorTask(void*) {
 
   const int configuredCount = configuredSensorCount();
   const int connectedCount = connectedSensorCount();
+
   Serial.print("VL53L0X connected: ");
   Serial.print(connectedCount);
   Serial.print(" / ");
@@ -28,7 +29,7 @@ void laserSensorTask(void*) {
     vTaskDelay(pdMS_TO_TICKS(LASER_SENSOR_TASK_DELAY_MS));
   }
 }
-}
+}  // namespace
 
 bool laserSensorCtrlBegin() {
   if (laserSensorTaskHandle != nullptr) {
@@ -53,10 +54,6 @@ bool laserSensorCtrlBegin() {
 
   Serial.println("VL53L0X task started");
   return true;
-}
-
-void laserSensorCtrlUpdate() {
-  updateSensors();
 }
 
 bool laserSensorCtrlReady() {

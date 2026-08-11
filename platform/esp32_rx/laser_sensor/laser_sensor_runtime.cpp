@@ -35,7 +35,7 @@ void readNextAvailableSensorIfDue() {
   }
 }
 
-void markStaleSensorsUnavailable() {
+void invalidateStaleSensorReadings() {
   const uint32_t now = millis();
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
@@ -95,19 +95,37 @@ void recoverI2cBusIfRequired() {
     return;
   }
 
-  servoCtrlRestoreAfterI2cRecovery();
+  Serial.println("I2C BUS RESTART SUCCESS");
+
+  const bool servoRecovered = servoCtrlRestoreAfterI2cRecovery();
+
   markAllSensorsUnavailable();
 
   const uint32_t now = millis();
+  bool tcaReady = i2cBusDisableAllTcaChannels();
+  bool allSensorsRecovered = tcaReady;
+
+  if (!tcaReady) {
+    Serial.println("TCA9548A recovery failed");
+  }
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
-    if (sensorConfigured(index)) {
-      lastInitializationAttemptMs[index] = now;
-      initializeOneSensor(index);
+    if (!sensorConfigured(index)) {
+      continue;
+    }
+
+    lastInitializationAttemptMs[index] = now;
+
+    if (tcaReady && !initializeOneSensor(index)) {
+      allSensorsRecovered = false;
     }
   }
 
-  Serial.println("I2C BUS RECOVERY SUCCESS");
+  if (servoRecovered && allSensorsRecovered) {
+    Serial.println("I2C DEVICE RECOVERY SUCCESS");
+  } else {
+    Serial.println("I2C DEVICE RECOVERY PARTIAL");
+  }
 }
 }  // namespace
 
@@ -123,11 +141,12 @@ void initializeAllSensors() {
   clearAllSensorStates();
   markAllSensorsUnavailable();
 
-  if (!i2cBusBegin()) {
+  if (!i2cBusDisableAllTcaChannels()) {
+    Serial.println("TCA9548A 初期化失敗");
     return;
   }
 
-  servoCtrlRestoreAfterI2cRecovery();
+  Serial.println("TCA9548A 接続成功");
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     if (sensorConfigured(index)) {
@@ -138,7 +157,7 @@ void initializeAllSensors() {
 
 void updateSensors() {
   readNextAvailableSensorIfDue();
-  markStaleSensorsUnavailable();
+  invalidateStaleSensorReadings();
   retryMissingSensorsIfDue();
   recoverI2cBusIfRequired();
 }

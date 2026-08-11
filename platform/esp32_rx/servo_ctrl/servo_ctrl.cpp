@@ -1,7 +1,7 @@
 #include "servo_ctrl.h"
 
-#include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+
 #include "i2c/i2c_bus.hpp"
 #include "servo_ctrl/constants.h"
 
@@ -100,7 +100,7 @@ bool setServoAngle(uint8_t channel, uint8_t requestedAngle) {
 
   return true;
 }
-}
+}  // namespace
 
 void servoCtrlBegin() {
   I2cBusLockGuard lock;
@@ -109,7 +109,6 @@ void servoCtrlBegin() {
     return;
   }
 
-  Wire.begin(I2C_SDA, I2C_SCL);
   servoDriver.begin();
   servoDriver.setPWMFreq(SERVO_PWM_FREQ);
   delay(10);
@@ -117,27 +116,43 @@ void servoCtrlBegin() {
   servoControllerInitialized = true;
   servoCtrlDisableAll();
 
-  Serial.println(
-    "PCA9685 ready: SDA=21 SCL=22 ADDRESS=0x40, CH0-CH15 FULL OFF"
-  );
+  Serial.println("PCA9685 ready: ADDRESS=0x40, CH0-CH15 FULL OFF");
 }
 
-void servoCtrlRestoreAfterI2cRecovery() {
+bool servoCtrlRestoreAfterI2cRecovery() {
   if (!servoControllerInitialized) {
-    return;
+    return true;
   }
 
   I2cBusLockGuard lock;
   if (!lock.locked()) {
     Serial.println("PCA9685 recovery lock failed");
-    return;
+    return false;
   }
 
   servoDriver.begin();
   servoDriver.setPWMFreq(SERVO_PWM_FREQ);
   delay(10);
-  servoCtrlDisableAll();
-  Serial.println("PCA9685 settings restored after I2C recovery");
+
+  bool restored = true;
+
+  for (uint8_t channel = 0; channel < SERVO_CHANNEL_COUNT; ++channel) {
+    if (servoOutputActive[channel]) {
+      if (!setServoAngle(channel, servoLastAngle[channel])) {
+        restored = false;
+      }
+    } else {
+      servoDriver.setPWM(channel, 0, 4096);
+    }
+  }
+
+  if (restored) {
+    Serial.println("PCA9685 state restored after I2C recovery");
+  } else {
+    Serial.println("PCA9685 state restore incomplete after I2C recovery");
+  }
+
+  return restored;
 }
 
 void servoCtrlDisableAll() {
