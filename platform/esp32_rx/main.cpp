@@ -7,6 +7,7 @@
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
 #include "servo_ctrl/servo_ctrl.h"
+#include "step_assist/step_assist_ctrl.hpp"
 
 void setup() {
   Serial.begin(115200);
@@ -35,6 +36,8 @@ void setup() {
     Serial.println("WARNING: laser sensor task startup failed.");
   }
 
+  stepAssistCtrlBegin();
+
   Serial.println();
   Serial.println("READY");
   Serial.println();
@@ -49,4 +52,5 @@ void loop() {
 
   im920CommCheckTimeout();
   im920CommSendPeriodicStatus();
+  stepAssistCtrlUpdate();
 }
