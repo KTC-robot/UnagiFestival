@@ -211,12 +211,12 @@ void stepAssistCtrlUpdate()
     break;
 
   case StepAssistPhase::REAR_RAISED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
+    if (laserSensorCtrlFresh(LASER_SENSOR_FRONT))
     {
       const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
 
-      Serial.print("下降検出 CENTER 距離=");
+      Serial.print("下降検出 FRONT 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
@@ -230,7 +230,7 @@ void stepAssistCtrlUpdate()
     else
     {
       Serial.println(
-          "下降検出 CENTER: 測距データ無効");
+          "下降検出 FRONT: 測距データ無効");
     }
     break;
   }
