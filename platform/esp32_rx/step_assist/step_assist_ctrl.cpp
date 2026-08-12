@@ -91,9 +91,9 @@ void stepAssistCtrlUpdate() {
         const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
 
-        Serial.print("段差検出 FRONT 距離=");
-        Serial.print(distance);
-        Serial.println(" mm");
+        // Serial.print("段差検出 FRONT 距離=");
+        // Serial.print(distance);
+        // Serial.println(" mm");
 
         if (
           distance <= STEP_ASSIST_STEP_DETECT_THRESHOLD_MM
@@ -101,9 +101,9 @@ void stepAssistCtrlUpdate() {
           transitionTo(StepAssistPhase::FRONT_LOWERED);
         }
       } else {
-        Serial.println(
-          "段差検出 FRONT: 測距データ無効"
-        );
+        // Serial.println(
+        //   "段差検出 FRONT: 測距データ無効"
+        // );
       }
       break;
 
@@ -112,9 +112,9 @@ void stepAssistCtrlUpdate() {
         const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
 
-        Serial.print("段差検出 CENTER 距離=");
-        Serial.print(distance);
-        Serial.println(" mm");
+        // Serial.print("段差検出 CENTER 距離=");
+        // Serial.print(distance);
+        // Serial.println(" mm");
 
         if (
           distance <= STEP_ASSIST_STEP_DETECT_THRESHOLD_MM
@@ -122,9 +122,9 @@ void stepAssistCtrlUpdate() {
           transitionTo(StepAssistPhase::BOTH_LOWERED);
         }
       } else {
-        Serial.println(
-          "段差検出 CENTER: 測距データ無効"
-        );
+        // Serial.println(
+        //   "段差検出 CENTER: 測距データ無効"
+        // );
       }
       break;
 
@@ -133,9 +133,9 @@ void stepAssistCtrlUpdate() {
         const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
 
-        Serial.print("下降検出 REAR 距離=");
-        Serial.print(distance);
-        Serial.println(" mm");
+        // Serial.print("下降検出 REAR 距離=");
+        // Serial.print(distance);
+        // Serial.println(" mm");
 
         if (
           distance >= STEP_ASSIST_DROP_DETECT_THRESHOLD_MM
@@ -143,9 +143,9 @@ void stepAssistCtrlUpdate() {
           transitionTo(StepAssistPhase::REAR_RAISED);
         }
       } else {
-        Serial.println(
-          "下降検出 REAR: 測距データ無効"
-        );
+        // Serial.println(
+        //   "下降検出 REAR: 測距データ無効"
+        // );
       }
       break;
 
@@ -154,9 +154,9 @@ void stepAssistCtrlUpdate() {
         const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
 
-        Serial.print("下降検出 CENTER 距離=");
-        Serial.print(distance);
-        Serial.println(" mm");
+        // Serial.print("下降検出 CENTER 距離=");
+        // Serial.print(distance);
+        // Serial.println(" mm");
 
         if (
           distance >= STEP_ASSIST_DROP_DETECT_THRESHOLD_MM
@@ -164,9 +164,9 @@ void stepAssistCtrlUpdate() {
           transitionTo(StepAssistPhase::NORMAL);
         }
       } else {
-        Serial.println(
-          "下降検出 CENTER: 測距データ無効"
-        );
+        // Serial.println(
+        //   "下降検出 CENTER: 測距データ無効"
+        // );
       }
       break;
   }
