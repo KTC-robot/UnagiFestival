@@ -18,6 +18,10 @@ constexpr float SPEED_KI = 0.20f;
 constexpr float PID_INTEGRAL_LIMIT = 8000.0f;
 constexpr float TARGET_RPM_SLEW_PER_SEC = 6000.0f;
 
+constexpr bool ENABLE_GAIN_TUNING_LOG = false;
+constexpr uint32_t GAIN_TUNING_LOG_INTERVAL_MS = 100;
+constexpr uint32_t GAIN_TUNING_MAX_DURATION_MS = 10000;
+
 constexpr uint32_t MOTOR_CONTROL_INTERVAL_US = 5000;
 
 constexpr int DRIVE_POWER_MIN = 10;

@@ -29,8 +29,16 @@ enum class ControlCommand : uint8_t {
   STOP = 0x01,
   EMERGENCY_STOP = 0x02,
   CHANGE_POWER = 0x03,
-  DRIVE = 0x04
+  DRIVE = 0x04,
+  SET_GAIN = 0x05,
+  GAIN_TUNE_START = 0x06,
+  GAIN_TUNE_KEEPALIVE = 0x07
 };
+
+constexpr float GAIN_WIRE_SCALE = 1000.0f;
+constexpr uint32_t GAIN_TUNING_DURATION_UNIT_MS = 100;
+constexpr uint32_t GAIN_TUNING_MAX_DURATION_MS = 10000;
+constexpr int GAIN_TUNING_MOTOR_COUNT = 4;
 
 // Raspberry Pi側で確認済みのIM920設定。
 // 自動書き換えはせず、起動時にESP32側の値を読み出して比較する。

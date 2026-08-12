@@ -21,6 +21,15 @@ uint32_t lastRxMs = 0;
 uint32_t lastStatusTxMs = 0;
 uint32_t driveCommandCount = 0;
 
+uint16_t parseUint16(const String& hex, int offset) {
+  return static_cast<uint16_t>(
+    (static_cast<uint16_t>(
+      utilHexByteToUint8(hex.substring(offset, offset + 2))
+    ) << 8) |
+    utilHexByteToUint8(hex.substring(offset + 2, offset + 4))
+  );
+}
+
 bool isKnownPacketType(uint8_t type) {
   return (
     type == static_cast<uint8_t>(PacketType::CONTROL) ||
@@ -179,8 +188,10 @@ void handleControlPacket(const String& hex) {
     utilHexByteToUint8(hex.substring(2, 4))
   );
 
-  Serial.print("CONTROL <- ID=");
-  Serial.println(static_cast<uint8_t>(command));
+  if (command != ControlCommand::GAIN_TUNE_KEEPALIVE) {
+    Serial.print("CONTROL <- ID=");
+    Serial.println(static_cast<uint8_t>(command));
+  }
 
   switch (command) {
     case ControlCommand::STOP:
@@ -241,10 +252,108 @@ void handleControlPacket(const String& hex) {
       break;
     }
 
+    case ControlCommand::SET_GAIN: {
+      if (hex.length() < 16) {
+        return;
+      }
+
+      const uint8_t motorId =
+        utilHexByteToUint8(hex.substring(4, 6));
+      const float kp =
+        static_cast<float>(parseUint16(hex, 6)) / GAIN_WIRE_SCALE;
+      const float ki =
+        static_cast<float>(parseUint16(hex, 10)) / GAIN_WIRE_SCALE;
+
+      if (!chassisCtrlSetSpeedGain(static_cast<int>(motorId) - 1, kp, ki)) {
+        Serial.println("GAIN SET invalid motor");
+        return;
+      }
+
+      String reply = "GAIN SET M";
+      reply += String(motorId);
+      reply += " KP=";
+      reply += String(kp, 3);
+      reply += " KI=";
+      reply += String(ki, 3);
+      im920CommSendText(reply);
+      break;
+    }
+
+    case ControlCommand::GAIN_TUNE_START: {
+      if (hex.length() < 12) {
+        return;
+      }
+
+      const int8_t vx =
+        utilToInt8(utilHexByteToUint8(hex.substring(4, 6)));
+      const int8_t vy =
+        utilToInt8(utilHexByteToUint8(hex.substring(6, 8)));
+      const int8_t wz =
+        utilToInt8(utilHexByteToUint8(hex.substring(8, 10)));
+      const uint8_t durationUnits =
+        utilHexByteToUint8(hex.substring(10, 12));
+
+      if (durationUnits == 0) {
+        Serial.println("GAIN TUNING invalid duration");
+        return;
+      }
+
+      chassisCtrlStartGainTuning(
+        vx,
+        vy,
+        wz,
+        min(
+          static_cast<uint32_t>(durationUnits) *
+            GAIN_TUNING_DURATION_UNIT_MS,
+          GAIN_TUNING_MAX_DURATION_MS
+        )
+      );
+      im920CommSendText("TUNE START");
+      break;
+    }
+
+    case ControlCommand::GAIN_TUNE_KEEPALIVE:
+      break;
+
     default:
       Serial.println("CONTROL unknown command");
       break;
   }
+}
+
+void sendGainTuningResultsIfReady() {
+  if (!chassisCtrlGainTuningResultReady()) {
+    return;
+  }
+
+  for (
+    int motorIndex = 0;
+    motorIndex < GAIN_TUNING_MOTOR_COUNT;
+    ++motorIndex
+  ) {
+    const ChassisGainTuningResult result =
+      chassisCtrlGetGainTuningResult(motorIndex);
+    const uint32_t saturationPercent = result.sampleCount > 0
+      ? result.saturationCount * 100U / result.sampleCount
+      : 0;
+
+    String message = "TUNE M";
+    message += String(motorIndex + 1);
+    message += " MAE=";
+    message += String(static_cast<int>(lroundf(result.meanAbsoluteError)));
+    message += " RMSE=";
+    message += String(static_cast<int>(lroundf(result.rootMeanSquaredError)));
+    message += " MAX=";
+    message += String(static_cast<int>(lroundf(result.maximumAbsoluteError)));
+    message += " FINAL=";
+    message += String(static_cast<int>(lroundf(result.finalError)));
+    message += " SAT=";
+    message += String(saturationPercent);
+    im920CommSendText(message);
+  }
+
+  im920CommSendText("TUNE DONE");
+  chassisCtrlClearGainTuningResultReady();
 }
 
 void handlePayloadHex(const String& hex) {
@@ -361,6 +470,7 @@ void im920CommUpdate() {
   updateLed();
   readIm920Serial();
   readPcSerialCommand();
+  sendGainTuningResultsIfReady();
 }
 
 void im920CommCheckTimeout() {

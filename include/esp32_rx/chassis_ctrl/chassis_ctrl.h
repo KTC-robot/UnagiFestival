@@ -2,6 +2,15 @@
 
 #include <Arduino.h>
 
+struct ChassisGainTuningResult {
+  uint32_t sampleCount;
+  float meanAbsoluteError;
+  float rootMeanSquaredError;
+  float maximumAbsoluteError;
+  float finalError;
+  uint32_t saturationCount;
+};
+
 /**
  * @file chassis_ctrl.h
  * @brief メカナム足回りの目標生成と速度PI制御APIを提供する。
@@ -49,6 +58,45 @@ void chassisCtrlStop();
  * @param delta 現在値へ加算する出力率の差分[%]。
  */
 void chassisCtrlChangePower(int delta);
+
+/**
+ * @brief 指定モーターの速度PIゲインを設定する。
+ *
+ * @param motorIndex モーターインデックス。0がID1、3がID4。
+ * @param kp 比例ゲイン。
+ * @param ki 積分ゲイン。
+ * @return 設定した場合true。インデックスが無効な場合false。
+ */
+bool chassisCtrlSetSpeedGain(int motorIndex, float kp, float ki);
+
+/**
+ * @brief PIゲイン評価用の自動走行試験を開始する。
+ *
+ * @param vx 前後方向指令。範囲は-127〜127。
+ * @param vy 左右方向指令。範囲は-127〜127。
+ * @param wz 回転方向指令。範囲は-127〜127。
+ * @param durationMs 試験時間[ms]。
+ */
+void chassisCtrlStartGainTuning(
+  int8_t vx,
+  int8_t vy,
+  int8_t wz,
+  uint32_t durationMs
+);
+
+/** @brief ゲイン調整試験が終了し、未送信の結果があるか確認する。 */
+bool chassisCtrlGainTuningResultReady();
+
+/**
+ * @brief 指定モーターの直近のゲイン調整結果を取得する。
+ *
+ * @param motorIndex モーターインデックス。0がID1、3がID4。
+ * @return 集計結果。
+ */
+ChassisGainTuningResult chassisCtrlGetGainTuningResult(int motorIndex);
+
+/** @brief ゲイン調整結果を送信済みとしてマークする。 */
+void chassisCtrlClearGainTuningResultReady();
 
 /**
  * @brief 現在の走行出力率を取得する。
