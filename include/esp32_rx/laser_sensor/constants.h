@@ -6,35 +6,30 @@
 // センサー構成
 // ========================================
 
-constexpr int LASER_SENSOR_COUNT = 3;
+constexpr int LASER_SENSOR_COUNT = 2;
 
-// 論理インデックスは FRONT / CENTER / REAR の順で固定する。
+// 論理インデックスは FRONT / REAR の順で固定する。
 // 物理的なTCA9548Aチャネルとの差は LASER_SENSOR_CHANNELS で吸収する。
 constexpr int LASER_SENSOR_FRONT = 0;
-constexpr int LASER_SENSOR_CENTER = 1;
-constexpr int LASER_SENSOR_REAR = 2;
+constexpr int LASER_SENSOR_REAR = 1;
 
 constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
     true,  // FRONT  CH1
-    true,  // CENTER CH2
     true   // REAR   CH0
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {
     1,  // FRONT
-    2,  // CENTER
     0   // REAR
 };
 
 constexpr int LASER_SENSOR_OFFSETS_MM[LASER_SENSOR_COUNT] = {
-    0,
     0,
     0
 };
 
 constexpr const char* LASER_SENSOR_NAMES[LASER_SENSOR_COUNT] = {
     "FRONT",
-    "CENTER",
     "REAR"
 };
 
@@ -82,6 +77,6 @@ constexpr int LASER_SENSOR_MAX_VALID_MM = 2000;
 // 距離フィルタ
 // ========================================
 
-// new = 1/4, old = 3/4
-constexpr int LASER_SENSOR_FILTER_NEW_WEIGHT_NUMERATOR = 1;
+// new = 3/4, old = 1/4
+constexpr int LASER_SENSOR_FILTER_NEW_WEIGHT_NUMERATOR = 3;
 constexpr int LASER_SENSOR_FILTER_WEIGHT_DENOMINATOR = 4;

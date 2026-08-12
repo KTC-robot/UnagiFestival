@@ -15,7 +15,6 @@ namespace
     NORMAL,
     FRONT_LOWERED,
     BOTH_LOWERED,
-    REAR_STEP_DETECTED,
     REAR_RAISED,
   };
 
@@ -33,9 +32,6 @@ namespace
 
     case StepAssistPhase::BOTH_LOWERED:
       return "前後補助輪DOWN";
-
-    case StepAssistPhase::REAR_STEP_DETECTED:
-      return "後センサー段差検出";
 
     case StepAssistPhase::REAR_RAISED:
       return "後補助輪UP";
@@ -71,7 +67,6 @@ namespace
       break;
 
     case StepAssistPhase::BOTH_LOWERED:
-    case StepAssistPhase::REAR_STEP_DETECTED:
       setFrontRaised(false);
       setRearRaised(false);
       break;
@@ -130,12 +125,12 @@ void stepAssistCtrlUpdate()
     break;
 
   case StepAssistPhase::FRONT_LOWERED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
+    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
     {
       const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
 
-      Serial.print("段差検出 CENTER 距離=");
+      Serial.print("段差検出 REAR 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
@@ -148,7 +143,7 @@ void stepAssistCtrlUpdate()
     else
     {
       Serial.println(
-          "段差検出 CENTER: 測距データ無効");
+          "段差検出 REAR: 測距データ無効");
     }
     break;
 
@@ -158,37 +153,10 @@ void stepAssistCtrlUpdate()
       const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
 
-      Serial.print("段差検出 REAR 距離=");
-      Serial.print(distance);
-      Serial.println(" mm");
-
-      // 後側センサーが一度段差へ近づいたことを確認する。
-      if (
-          distance <= STEP_ASSIST_STEP_DETECT_THRESHOLD_MM)
-      {
-        transitionTo(
-            StepAssistPhase::REAR_STEP_DETECTED);
-      }
-    }
-    else
-    {
-      Serial.println(
-          "段差検出 REAR: 測距データ無効");
-    }
-    break;
-
-  case StepAssistPhase::REAR_STEP_DETECTED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
-
       Serial.print("下降検出 REAR 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
-      // 一度段差を検出した後で遠くなった場合だけ、
-      // 後側が段差を抜けたと判断する。
       if (
           distance >= STEP_ASSIST_DROP_DETECT_THRESHOLD_MM)
       {
@@ -204,12 +172,12 @@ void stepAssistCtrlUpdate()
     break;
 
   case StepAssistPhase::REAR_RAISED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
+    if (laserSensorCtrlFresh(LASER_SENSOR_FRONT))
     {
       const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
 
-      Serial.print("下降検出 CENTER 距離=");
+      Serial.print("下降検出 FRONT 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
@@ -223,7 +191,7 @@ void stepAssistCtrlUpdate()
     else
     {
       Serial.println(
-          "下降検出 CENTER: 測距データ無効");
+          "下降検出 FRONT: 測距データ無効");
     }
     break;
   }
