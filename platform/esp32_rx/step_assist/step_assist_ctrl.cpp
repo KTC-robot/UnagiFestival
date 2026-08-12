@@ -15,10 +15,12 @@ namespace
     NORMAL,
     FRONT_LOWERED,
     BOTH_LOWERED,
+    REAR_SENSOR_LOWER,
     REAR_RAISED,
   };
 
   StepAssistPhase currentPhase = StepAssistPhase::NORMAL;
+  uint32_t phaseEnteredMs = 0;
 
   const char *phaseName(StepAssistPhase phase)
   {
@@ -32,6 +34,9 @@ namespace
 
     case StepAssistPhase::BOTH_LOWERED:
       return "前後補助輪DOWN";
+
+    case StepAssistPhase::REAR_SENSOR_LOWER:
+      return "後センサー段差検出";
 
     case StepAssistPhase::REAR_RAISED:
       return "後補助輪UP";
@@ -67,6 +72,7 @@ namespace
       break;
 
     case StepAssistPhase::BOTH_LOWERED:
+    case StepAssistPhase::REAR_SENSOR_LOWER:
       setFrontRaised(false);
       setRearRaised(false);
       break;
@@ -81,6 +87,7 @@ namespace
     Serial.println(phaseName(nextPhase));
 
     currentPhase = nextPhase;
+    phaseEnteredMs = millis();
     applyPhaseOutputs(currentPhase);
   }
 
@@ -89,6 +96,7 @@ namespace
 bool stepAssistCtrlBegin()
 {
   currentPhase = StepAssistPhase::NORMAL;
+  phaseEnteredMs = millis();
   applyPhaseOutputs(currentPhase);
 
   Serial.println(
@@ -125,12 +133,12 @@ void stepAssistCtrlUpdate()
     break;
 
   case StepAssistPhase::FRONT_LOWERED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
+    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
     {
       const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
 
-      Serial.print("段差検出 REAR 距離=");
+      Serial.print("段差検出 CENTER 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
@@ -143,7 +151,7 @@ void stepAssistCtrlUpdate()
     else
     {
       Serial.println(
-          "段差検出 REAR: 測距データ無効");
+          "段差検出 CENTER: 測距データ無効");
     }
     break;
 
@@ -153,9 +161,40 @@ void stepAssistCtrlUpdate()
       const int distance =
           laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
 
+      Serial.print("段差検出 REAR 距離=");
+      Serial.print(distance);
+      Serial.println(" mm");
+
+      if (
+          distance <= STEP_ASSIST_STEP_DETECT_THRESHOLD_MM)
+      {
+        transitionTo(
+            StepAssistPhase::REAR_SENSOR_LOWER);
+      }
+    }
+    else
+    {
+      Serial.println(
+          "段差検出 REAR: 測距データ無効");
+    }
+    break;
+
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
+    {
+      const int distance =
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
+
       Serial.print("下降検出 REAR 距離=");
       Serial.print(distance);
       Serial.println(" mm");
+
+      if (
+          millis() - phaseEnteredMs <
+          STEP_ASSIST_REAR_DROP_GRACE_MS)
+      {
+        break;
+      }
 
       if (
           distance >= STEP_ASSIST_DROP_DETECT_THRESHOLD_MM)
@@ -172,12 +211,12 @@ void stepAssistCtrlUpdate()
     break;
 
   case StepAssistPhase::REAR_RAISED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_FRONT))
+    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
     {
       const int distance =
-          laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
+          laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
 
-      Serial.print("下降検出 FRONT 距離=");
+      Serial.print("下降検出 CENTER 距離=");
       Serial.print(distance);
       Serial.println(" mm");
 
@@ -191,7 +230,7 @@ void stepAssistCtrlUpdate()
     else
     {
       Serial.println(
-          "下降検出 FRONT: 測距データ無効");
+          "下降検出 CENTER: 測距データ無効");
     }
     break;
   }
