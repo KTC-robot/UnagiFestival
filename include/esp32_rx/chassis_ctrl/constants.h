@@ -39,10 +39,10 @@ const uint8_t WHEEL_ESC_ID[NUM_WHEELS] = {1, 3, 2, 4};
 const char* WHEEL_NAME[NUM_WHEELS] = {"FL", "FR", "RL", "RR"};
 
 const bool MOTOR_REVERSED[NUM_MOTORS] = {
-  false,
-  false,
   true,
-  true
+  true,
+  false,
+  false
 };
 
 const int8_t FWD_SIGN[NUM_WHEELS] = {+1, +1, +1, +1};
