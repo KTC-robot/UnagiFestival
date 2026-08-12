@@ -16,9 +16,62 @@ float longitudinalCommand = 0.0f;
 float requestedMotorRpm[NUM_MOTORS] = {};
 float rampedMotorRpm[NUM_MOTORS] = {};
 float pidIntegral[NUM_MOTORS] = {};
+float speedKp[NUM_MOTORS] = {};
+float speedKi[NUM_MOTORS] = {};
+
+struct GainTuningAccumulator {
+  uint32_t sampleCount;
+  double absoluteErrorSum;
+  double squaredErrorSum;
+  float maximumAbsoluteError;
+  float finalError;
+  uint32_t saturationCount;
+};
+
+GainTuningAccumulator tuningStats[NUM_MOTORS] = {};
+ChassisGainTuningResult tuningResults[NUM_MOTORS] = {};
+bool tuningActive = false;
+bool tuningResultReady = false;
+uint32_t tuningStartedMs = 0;
+uint32_t tuningDurationMs = 0;
+uint32_t lastTuningLogMs = 0;
 
 uint32_t lastMotorControlUs = 0;
 uint32_t lastMotorPrintMs = 0;
+
+void clearTuningStats() {
+  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
+    tuningStats[motorIndex] = {};
+    tuningResults[motorIndex] = {};
+  }
+}
+
+void finishGainTuning() {
+  tuningActive = false;
+  chassisCtrlStop();
+
+  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
+    const GainTuningAccumulator& stats = tuningStats[motorIndex];
+    ChassisGainTuningResult& result = tuningResults[motorIndex];
+
+    result.sampleCount = stats.sampleCount;
+    result.maximumAbsoluteError = stats.maximumAbsoluteError;
+    result.finalError = stats.finalError;
+    result.saturationCount = stats.saturationCount;
+
+    if (stats.sampleCount > 0) {
+      result.meanAbsoluteError = static_cast<float>(
+        stats.absoluteErrorSum / static_cast<double>(stats.sampleCount)
+      );
+      result.rootMeanSquaredError = static_cast<float>(sqrt(
+        stats.squaredErrorSum / static_cast<double>(stats.sampleCount)
+      ));
+    }
+  }
+
+  tuningResultReady = true;
+  Serial.println("GAIN TUNING DONE -> STOP");
+}
 
 float applyMotorInverse(int motorIndex, float value) {
   return MOTOR_REVERSED[motorIndex] ? -value : value;
@@ -218,6 +271,11 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 void chassisCtrlBegin() {
   lastMotorControlUs = micros();
 
+  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
+    speedKp[motorIndex] = SPEED_KP;
+    speedKi[motorIndex] = SPEED_KI;
+  }
+
   Serial.print("Chassis ready: Kp=");
   Serial.print(SPEED_KP, 2);
   Serial.print(" Ki=");
@@ -227,6 +285,12 @@ void chassisCtrlBegin() {
 }
 
 void chassisCtrlUpdate() {
+  const uint32_t nowMs = millis();
+  if (tuningActive && nowMs - tuningStartedMs >= tuningDurationMs) {
+    finishGainTuning();
+    return;
+  }
+
   if (!canCommIsReady()) {
     return;
   }
@@ -247,6 +311,10 @@ void chassisCtrlUpdate() {
   }
 
   const float maxRpmChange = TARGET_RPM_SLEW_PER_SEC * dt;
+
+  const bool printTuningLog =
+    tuningActive && ENABLE_GAIN_TUNING_LOG &&
+    nowMs - lastTuningLogMs >= GAIN_TUNING_LOG_INTERVAL_MS;
 
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
     rampedMotorRpm[motorIndex] = moveToward(
@@ -281,7 +349,8 @@ void chassisCtrlUpdate() {
     );
 
     const float outputCandidate =
-      SPEED_KP * error + SPEED_KI * integralCandidate;
+      speedKp[motorIndex] * error +
+      speedKi[motorIndex] * integralCandidate;
 
     const bool saturatedHigh =
       outputCandidate >= static_cast<float>(MAX_CURRENT_COMMAND);
@@ -298,14 +367,64 @@ void chassisCtrlUpdate() {
       allowIntegral ? integralCandidate : integralOld;
 
     const float output =
-      SPEED_KP * error + SPEED_KI * integralUsed;
+      speedKp[motorIndex] * error + speedKi[motorIndex] * integralUsed;
+
+    const int16_t currentCommand = clampCurrentCommand(output);
+
+    const bool saturated =
+      currentCommand >= MAX_CURRENT_COMMAND ||
+      currentCommand <= -MAX_CURRENT_COMMAND;
+
+    if (tuningActive) {
+      GainTuningAccumulator& stats = tuningStats[motorIndex];
+      const float absoluteError = fabsf(error);
+      ++stats.sampleCount;
+      stats.absoluteErrorSum += static_cast<double>(absoluteError);
+      stats.squaredErrorSum +=
+        static_cast<double>(error) * static_cast<double>(error);
+      stats.maximumAbsoluteError = max(
+        stats.maximumAbsoluteError,
+        absoluteError
+      );
+      stats.finalError = error;
+      if (saturated) {
+        ++stats.saturationCount;
+      }
+
+      if (printTuningLog) {
+        Serial.print("GAIN M");
+        Serial.print(motorIndex + 1);
+        Serial.print(" KP=");
+        Serial.print(speedKp[motorIndex], 3);
+        Serial.print(" KI=");
+        Serial.print(speedKi[motorIndex], 3);
+        Serial.print(" TARGET=");
+        Serial.print(rampedMotorRpm[motorIndex], 0);
+        Serial.print(" ACTUAL=");
+        Serial.print(canCommGetMotorRpm(motorIndex));
+        Serial.print(" ERROR=");
+        Serial.print(error, 0);
+        Serial.print(" P=");
+        Serial.print(speedKp[motorIndex] * error, 0);
+        Serial.print(" I=");
+        Serial.print(speedKi[motorIndex] * integralUsed, 0);
+        Serial.print(" OUT=");
+        Serial.print(output, 0);
+        Serial.print(" SAT=");
+        Serial.println(saturated ? 1 : 0);
+      }
+    }
 
     canCommSetCurrentCommand(
       motorIndex,
-      clampCurrentCommand(output)
+      currentCommand
     );
 
     pidIntegral[motorIndex] = integralUsed;
+  }
+
+  if (printTuningLog) {
+    lastTuningLogMs = nowMs;
   }
 }
 
@@ -322,6 +441,8 @@ void chassisCtrlSetDriveCommand(
 }
 
 void chassisCtrlStop() {
+  tuningActive = false;
+  tuningResultReady = false;
   longitudinalCommand = 0.0f;
 
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
@@ -345,6 +466,54 @@ void chassisCtrlChangePower(int delta) {
   Serial.print("DRIVE POWER=");
   Serial.print(drivePowerPercent);
   Serial.println("%");
+}
+
+bool chassisCtrlSetSpeedGain(int motorIndex, float kp, float ki) {
+  if (motorIndex < 0 || motorIndex >= NUM_MOTORS) {
+    return false;
+  }
+
+  speedKp[motorIndex] = kp;
+  speedKi[motorIndex] = ki;
+  return true;
+}
+
+void chassisCtrlStartGainTuning(
+  int8_t vx,
+  int8_t vy,
+  int8_t wz,
+  uint32_t durationMs
+) {
+  if (tuningActive) {
+    chassisCtrlStop();
+  }
+
+  clearTuningStats();
+  tuningResultReady = false;
+  tuningDurationMs = min(durationMs, GAIN_TUNING_MAX_DURATION_MS);
+  tuningStartedMs = millis();
+  lastTuningLogMs = tuningStartedMs;
+  chassisCtrlSetDriveCommand(vx, vy, wz);
+  tuningActive = true;
+
+  Serial.print("GAIN TUNING START duration_ms=");
+  Serial.println(tuningDurationMs);
+}
+
+bool chassisCtrlGainTuningResultReady() {
+  return tuningResultReady;
+}
+
+ChassisGainTuningResult chassisCtrlGetGainTuningResult(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= NUM_MOTORS) {
+    return {};
+  }
+
+  return tuningResults[motorIndex];
+}
+
+void chassisCtrlClearGainTuningResultReady() {
+  tuningResultReady = false;
 }
 
 int chassisCtrlGetPowerPercent() {

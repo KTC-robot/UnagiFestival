@@ -17,6 +17,22 @@ class ControlCommand(IntEnum):
     EMERGENCY_STOP = 0x02
     CHANGE_POWER = 0x03
     DRIVE = 0x04
+    SET_GAIN = 0x05
+    GAIN_TUNE_START = 0x06
+    GAIN_TUNE_KEEPALIVE = 0x07
+
+
+GAIN_WIRE_SCALE = 1000
+GAIN_TUNING_DURATION_UNIT_MS = 100
+GAIN_TUNING_MAX_DURATION_MS = 10_000
+MOTOR_ID_MIN = 1
+MOTOR_ID_MAX = 4
+UINT16_MAX_VALUE = 0xFFFF
+INVALID_MOTOR_ID_MESSAGE = "motor_id must be between 1 and 4"
+INVALID_GAIN_MESSAGE = "scaled gain must fit in uint16"
+INVALID_TUNING_DURATION_MESSAGE = (
+    "duration_ms must be 100..10000 in 100 ms units"
+)
 
 
 class Im920Device(Protocol):
@@ -94,6 +110,45 @@ class Im920Transport:
         parameters += self._byte_to_hex(command.vy)
         parameters += self._byte_to_hex(command.wz)
         self._send_control(ControlCommand.DRIVE, parameters)
+
+    def send_set_gain(self, motor_id: int, kp: float, ki: float) -> None:
+        if not MOTOR_ID_MIN <= motor_id <= MOTOR_ID_MAX:
+            raise ValueError(INVALID_MOTOR_ID_MESSAGE)
+
+        kp_scaled = round(kp * GAIN_WIRE_SCALE)
+        ki_scaled = round(ki * GAIN_WIRE_SCALE)
+        if (
+            not 0 <= kp_scaled <= UINT16_MAX_VALUE
+            or not 0 <= ki_scaled <= UINT16_MAX_VALUE
+        ):
+            raise ValueError(INVALID_GAIN_MESSAGE)
+
+        parameters = self._byte_to_hex(motor_id)
+        parameters += f"{kp_scaled:04X}{ki_scaled:04X}"
+        self._send_control(ControlCommand.SET_GAIN, parameters)
+
+    def send_gain_tune_start(
+        self,
+        command: DriveCommand,
+        duration_ms: int,
+    ) -> None:
+        if (
+            duration_ms < GAIN_TUNING_DURATION_UNIT_MS
+            or duration_ms > GAIN_TUNING_MAX_DURATION_MS
+            or duration_ms % GAIN_TUNING_DURATION_UNIT_MS != 0
+        ):
+            raise ValueError(INVALID_TUNING_DURATION_MESSAGE)
+
+        parameters = self._byte_to_hex(command.vx)
+        parameters += self._byte_to_hex(command.vy)
+        parameters += self._byte_to_hex(command.wz)
+        parameters += self._byte_to_hex(
+            duration_ms // GAIN_TUNING_DURATION_UNIT_MS
+        )
+        self._send_control(ControlCommand.GAIN_TUNE_START, parameters)
+
+    def send_gain_tune_keepalive(self) -> None:
+        self._send_control(ControlCommand.GAIN_TUNE_KEEPALIVE)
 
     def send_servo_set(self, command: ServoSetCommand) -> None:
         payload = self._byte_to_hex(PacketType.SERVO_SET)

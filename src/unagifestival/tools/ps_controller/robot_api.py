@@ -17,6 +17,16 @@ class RobotTransport(Protocol):
 
     def send_drive(self, command: DriveCommand) -> None: ...
 
+    def send_set_gain(self, motor_id: int, kp: float, ki: float) -> None: ...
+
+    def send_gain_tune_start(
+        self,
+        command: DriveCommand,
+        duration_ms: int,
+    ) -> None: ...
+
+    def send_gain_tune_keepalive(self) -> None: ...
+
     def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
 
@@ -37,6 +47,19 @@ class RobotApi:
 
     def drive(self, command: DriveCommand) -> None:
         self._transport.send_drive(command)
+
+    def set_gain(self, motor_id: int, kp: float, ki: float) -> None:
+        self._transport.send_set_gain(motor_id, kp, ki)
+
+    def start_gain_tuning(
+        self,
+        command: DriveCommand,
+        duration_ms: int,
+    ) -> None:
+        self._transport.send_gain_tune_start(command, duration_ms)
+
+    def gain_tuning_keepalive(self) -> None:
+        self._transport.send_gain_tune_keepalive()
 
     def set_servo(self, command: ServoSetCommand) -> None:
         self._transport.send_servo_set(command)
