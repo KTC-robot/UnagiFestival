@@ -42,6 +42,8 @@ logger = logging.getLogger("unagi_log")
 
 MIN_HEX_TEXT_LENGTH = 2
 MAX_SERVO_ANGLE = 180
+SLOW_MODE_MULTIPLIER = 0.25
+TRIGGER_ACTIVE_RATIO = 0.1
 
 
 class RobotHandler:
@@ -209,6 +211,29 @@ class RobotHandler:
 
         RobotHandler._validate_servo_actions()
         RobotHandler._warn_duplicate_servo_actions()
+
+    @staticmethod
+    def _is_trigger_pressed(
+        state: ControllerState,
+        axis: AxisCode,
+    ) -> bool:
+        """トリガーが一定量以上押されているか判定する."""
+        axis_info = state.axis_info.get(axis)
+
+        if axis_info is None:
+            return False
+
+        minimum = axis_info.minimum
+        maximum = axis_info.maximum
+
+        if maximum <= minimum:
+            return False
+
+        value = state.axis_values.get(axis, minimum)
+
+        pressed_ratio = (value - minimum) / (maximum - minimum)
+
+        return pressed_ratio >= TRIGGER_ACTIVE_RATIO
 
     @staticmethod
     def _validate_servo_actions() -> None:
@@ -379,19 +404,39 @@ class RobotHandler:
         dpad_y = state.axis_values.get(AxisCode.DPAD_Y, 0)
 
         if dpad_x != 0 or dpad_y != 0:
-            vx = dpad_y * STICK_SEND_MAX
+            # evdevの十字キーY軸は上方向が負値なので反転する。
+            vx = -dpad_y * STICK_SEND_MAX
             vy = dpad_x * STICK_SEND_MAX
             wz = 0
         else:
-            vx = ly
+            # evdevの左スティックY軸は上方向が負値なので反転する。
+            vx = -ly
             vy = lx
-            wz = rx
+            wz = -rx
+
+        # L2またはR2を押している間は減速モードにする。
+        slow_mode = (
+            self._is_trigger_pressed(
+                state,
+                AxisCode.LEFT_TRIGGER_L2,
+            )
+            or self._is_trigger_pressed(
+                state,
+                AxisCode.RIGHT_TRIGGER_R2,
+            )
+        )
+
+        if slow_mode:
+            vx = int(vx * SLOW_MODE_MULTIPLIER)
+            vy = int(vy * SLOW_MODE_MULTIPLIER)
+            wz = int(wz * SLOW_MODE_MULTIPLIER)
 
         logger.info(
-            "[ROBOT] DRIVE -> VX=%d VY=%d WZ=%d",
+            "[ROBOT] DRIVE -> VX=%d VY=%d WZ=%d SLOW=%s",
             vx,
             vy,
             wz,
+            slow_mode,
         )
 
         return DriveCommand(vx=vx, vy=vy, wz=wz)
