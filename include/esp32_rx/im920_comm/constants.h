@@ -11,7 +11,6 @@ constexpr int IM920_TX = 17;
 constexpr int LED_PIN = 2;
 constexpr uint32_t LED_PULSE_MS = 30;
 constexpr uint32_t COMM_TIMEOUT_MS = 600;
-constexpr uint32_t STATUS_TX_INTERVAL_MS = 1000;
 constexpr int DRIVE_ACK_INTERVAL = 10;
 
 constexpr bool ENABLE_REPLY_TO_PI = true;

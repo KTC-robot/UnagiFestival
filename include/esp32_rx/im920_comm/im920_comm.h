@@ -25,13 +25,6 @@ void im920CommUpdate();
 void im920CommCheckTimeout();
 
 /**
- * @brief 足回り、出力率、CAN状態を含むステータスを所定周期で送信する。
- *
- * 返信機能が無効な場合、または送信周期に達していない場合は送信しない。
- */
-void im920CommSendPeriodicStatus();
-
-/**
  * @brief ASCII文字列を16進文字列へ変換し、IM920のTXDAコマンドで送信する。
  *
  * 返信機能が無効な場合、または空文字列の場合は送信しない。
@@ -39,4 +32,3 @@ void im920CommSendPeriodicStatus();
  * @param text 送信するASCII文字列。
  */
 void im920CommSendText(const String& text);
-

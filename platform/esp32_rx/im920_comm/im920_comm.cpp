@@ -18,7 +18,6 @@ bool ledOn = false;
 uint32_t ledOffAt = 0;
 
 uint32_t lastRxMs = 0;
-uint32_t lastStatusTxMs = 0;
 uint32_t driveCommandCount = 0;
 int tuningTxIndex = -1;
 bool tuningTxWaitingForResponse = false;
@@ -538,32 +537,6 @@ void im920CommCheckTimeout() {
   }
 
   lastRxMs = millis();
-}
-
-void im920CommSendPeriodicStatus() {
-  // tuning結果送信中は通常statusを止め、IM920へのTXDA競合を避ける。
-  if (!ENABLE_REPLY_TO_PI || tuningTxIndex >= 0) {
-    return;
-  }
-
-  const uint32_t now = millis();
-
-  if (now - lastStatusTxMs < STATUS_TX_INTERVAL_MS) {
-    return;
-  }
-
-  lastStatusTxMs = now;
-
-  String message =
-    chassisCtrlIsActive() ? "STAT RUN " : "STAT STOP ";
-
-  message += "PWR=";
-  message += String(chassisCtrlGetPowerPercent());
-  message += canCommIsReady() ? " CAN=1" : " CAN=0";
-  message += " FB=";
-  message += String(canCommGetFeedbackMask(), HEX);
-
-  im920CommSendText(message);
 }
 
 void im920CommSendText(const String& text) {
