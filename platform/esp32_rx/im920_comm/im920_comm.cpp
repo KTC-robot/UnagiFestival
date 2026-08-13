@@ -18,8 +18,58 @@ bool ledOn = false;
 uint32_t ledOffAt = 0;
 
 uint32_t lastRxMs = 0;
-uint32_t lastStatusTxMs = 0;
 uint32_t driveCommandCount = 0;
+
+/**
+ * @brief gain tuning結果1件のstop-and-wait送信状態。
+ */
+enum class GainTuningTxState : uint8_t {
+  IDLE,                 ///< 未送信結果なし。
+  WAIT_LOCAL_RESPONSE,  ///< ローカルIM920のOK/NG待ち。
+  WAIT_REMOTE_ACK,      ///< Raspberry Piのapplication ACK待ち。
+  TURNAROUND_GUARD      ///< 無線の送受信切替待ち。
+};
+
+int tuningTxIndex = -1;
+GainTuningTxState tuningTxState = GainTuningTxState::IDLE;
+uint8_t tuningTxAttemptCount = 0;
+uint32_t tuningTxStartedMs = 0;
+uint32_t tuningTxAllowedMs = 0;
+
+/**
+ * @brief wheel gain調整結果の逐次送信状態を初期状態へ戻す。
+ *
+ * STOPや新規試験を跨いで旧試験のWG/WDを送らないために使用する。
+ */
+void resetGainTuningTxState() {
+  tuningTxIndex = -1;
+  tuningTxState = GainTuningTxState::IDLE;
+  tuningTxAttemptCount = 0;
+  tuningTxStartedMs = 0;
+  tuningTxAllowedMs = 0;
+}
+
+String gainTuningResultLabel(int index) {
+  return index < GAIN_TUNING_WHEEL_COUNT
+    ? String("WG") + String(index)
+    : "WD";
+}
+
+void failGainTuningResultTx() {
+  Serial.print("GAIN TUNING result ACK timeout packet=");
+  Serial.println(gainTuningResultLabel(tuningTxIndex));
+  chassisCtrlClearGainTuningResultReady();
+  resetGainTuningTxState();
+}
+
+void scheduleGainTuningResultRetry() {
+  if (tuningTxAttemptCount > GAIN_TUNING_RESULT_MAX_RETRIES) {
+    failGainTuningResultTx();
+    return;
+  }
+  tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+  tuningTxAllowedMs = millis() + GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS;
+}
 
 uint16_t parseUint16(const String& hex, int offset) {
   return static_cast<uint16_t>(
@@ -195,12 +245,14 @@ void handleControlPacket(const String& hex) {
 
   switch (command) {
     case ControlCommand::STOP:
+      resetGainTuningTxState();
       chassisCtrlStop();
       im920CommSendText("CTRL STOP");
       break;
 
     case ControlCommand::EMERGENCY_STOP:
       Serial.println("EMERGENCY STOP");
+      resetGainTuningTxState();
       chassisCtrlStop();
       im920CommSendText("CTRL ESTOP");
       break;
@@ -252,29 +304,33 @@ void handleControlPacket(const String& hex) {
       break;
     }
 
-    case ControlCommand::SET_GAIN: {
-      if (hex.length() < 16) {
+    case ControlCommand::SET_WHEEL_GAIN: {
+      if (hex.length() < 12) {
         return;
       }
 
-      const uint8_t motorId =
+      const uint8_t direction =
         utilHexByteToUint8(hex.substring(4, 6));
-      const float kp =
-        static_cast<float>(parseUint16(hex, 6)) / GAIN_WIRE_SCALE;
-      const float ki =
-        static_cast<float>(parseUint16(hex, 10)) / GAIN_WIRE_SCALE;
+      const uint8_t wheelIndex =
+        utilHexByteToUint8(hex.substring(6, 8));
+      const float gain =
+        static_cast<float>(parseUint16(hex, 8)) / GAIN_WIRE_SCALE;
 
-      if (!chassisCtrlSetSpeedGain(static_cast<int>(motorId) - 1, kp, ki)) {
-        Serial.println("GAIN SET invalid motor");
+      if (!chassisCtrlSetWheelGain(
+            static_cast<ChassisGainDirection>(direction),
+            wheelIndex,
+            gain
+          )) {
+        Serial.println("WHEEL GAIN SET invalid parameters");
         return;
       }
 
-      String reply = "GAIN SET M";
-      reply += String(motorId);
-      reply += " KP=";
-      reply += String(kp, 3);
-      reply += " KI=";
-      reply += String(ki, 3);
+      String reply = "WGS,";
+      reply += String(direction);
+      reply += ",";
+      reply += String(wheelIndex);
+      reply += ",";
+      reply += String(gain, 3);
       im920CommSendText(reply);
       break;
     }
@@ -298,6 +354,8 @@ void handleControlPacket(const String& hex) {
         return;
       }
 
+      // 新しい試験では、前回結果の送信途中stateを必ず破棄する。
+      resetGainTuningTxState();
       chassisCtrlStartGainTuning(
         vx,
         vy,
@@ -315,6 +373,36 @@ void handleControlPacket(const String& hex) {
     case ControlCommand::GAIN_TUNE_KEEPALIVE:
       break;
 
+    case ControlCommand::GAIN_TUNE_RESULT_ACK: {
+      if (hex.length() < 6) {
+        return;
+      }
+      const uint8_t ackIndex =
+        utilHexByteToUint8(hex.substring(4, 6));
+      if (tuningTxState != GainTuningTxState::WAIT_REMOTE_ACK ||
+          ackIndex != tuningTxIndex ||
+          ackIndex > GAIN_TUNING_WHEEL_COUNT) {
+        return;
+      }
+
+      Serial.print("[TUNE ACK] ");
+      Serial.println(gainTuningResultLabel(ackIndex));
+
+      if (ackIndex == GAIN_TUNING_WHEEL_COUNT) {
+        chassisCtrlClearGainTuningResultReady();
+        resetGainTuningTxState();
+        return;
+      }
+
+      ++tuningTxIndex;
+      tuningTxAttemptCount = 0;
+      // PiからのACK直後に次のWGを送らず、無線の方向切替時間を確保する。
+      tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+      tuningTxAllowedMs =
+        millis() + GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS;
+      break;
+    }
+
     default:
       Serial.println("CONTROL unknown command");
       break;
@@ -322,38 +410,84 @@ void handleControlPacket(const String& hex) {
 }
 
 void sendGainTuningResultsIfReady() {
-  if (!chassisCtrlGainTuningResultReady()) {
+  if (tuningTxIndex < 0) {
+    if (!chassisCtrlGainTuningResultReady()) {
+      return;
+    }
+    tuningTxIndex = 0;
+    tuningTxAttemptCount = 0;
+    tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+    tuningTxAllowedMs = millis();
+  }
+
+  if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+    if (millis() - tuningTxStartedMs < GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) {
+      return;
+    }
+    Serial.print("[TUNE TX] local response timeout ");
+    Serial.println(gainTuningResultLabel(tuningTxIndex));
+    scheduleGainTuningResultRetry();
     return;
   }
 
-  for (
-    int motorIndex = 0;
-    motorIndex < GAIN_TUNING_MOTOR_COUNT;
-    ++motorIndex
-  ) {
-    const ChassisGainTuningResult result =
-      chassisCtrlGetGainTuningResult(motorIndex);
-    const uint32_t saturationPercent = result.sampleCount > 0
-      ? result.saturationCount * 100U / result.sampleCount
-      : 0;
-
-    String message = "TUNE M";
-    message += String(motorIndex + 1);
-    message += " MAE=";
-    message += String(static_cast<int>(lroundf(result.meanAbsoluteError)));
-    message += " RMSE=";
-    message += String(static_cast<int>(lroundf(result.rootMeanSquaredError)));
-    message += " MAX=";
-    message += String(static_cast<int>(lroundf(result.maximumAbsoluteError)));
-    message += " FINAL=";
-    message += String(static_cast<int>(lroundf(result.finalError)));
-    message += " SAT=";
-    message += String(saturationPercent);
-    im920CommSendText(message);
+  if (tuningTxState == GainTuningTxState::WAIT_REMOTE_ACK) {
+    if (millis() - tuningTxStartedMs < GAIN_TUNING_RESULT_ACK_TIMEOUT_MS) {
+      return;
+    }
+    Serial.print("[TUNE ACK] timeout ");
+    Serial.println(gainTuningResultLabel(tuningTxIndex));
+    scheduleGainTuningResultRetry();
+    return;
   }
 
-  im920CommSendText("TUNE DONE");
-  chassisCtrlClearGainTuningResultReady();
+  if (tuningTxState != GainTuningTxState::TURNAROUND_GUARD ||
+      static_cast<int32_t>(millis() - tuningTxAllowedMs) < 0) {
+    return;
+  }
+
+  if (tuningTxAttemptCount > GAIN_TUNING_RESULT_MAX_RETRIES) {
+    failGainTuningResultTx();
+    return;
+  }
+
+  String message;
+  if (tuningTxIndex < GAIN_TUNING_WHEEL_COUNT) {
+    const int wheelIndex = tuningTxIndex;
+    const ChassisGainTuningResult result =
+      chassisCtrlGetGainTuningResult(wheelIndex);
+    message = "WG";
+    message += String(wheelIndex);
+    message += ",";
+    message += String(static_cast<int>(lroundf(result.meanAbsoluteRpm)));
+    message += ",";
+    message += String(result.sampleCount);
+    message += ",";
+    message += String(static_cast<int>(lroundf(result.standardDeviationRpm)));
+  } else if (tuningTxIndex == GAIN_TUNING_WHEEL_COUNT) {
+    message = "WD";
+  } else return;
+
+  ++tuningTxAttemptCount;
+  Serial.print("[TUNE TX] ");
+  Serial.print(gainTuningResultLabel(tuningTxIndex));
+  Serial.print(" attempt=");
+  Serial.println(tuningTxAttemptCount);
+
+  if (ENABLE_GAIN_TUNING_TX_LOG) {
+    Serial.print("[TUNE TX] text=");
+    Serial.println(message);
+    Serial.print("[TUNE TX] text_len=");
+    Serial.println(message.length());
+    Serial.print("[TUNE TX] hex_len=");
+    Serial.println(message.length() * 2);
+    Serial.print("[TUNE TX] command_len=");
+    Serial.println(5 + message.length() * 2);
+    Serial.print("[TUNE TX] index=");
+    Serial.println(tuningTxIndex);
+  }
+  im920CommSendText(message);
+  tuningTxState = GainTuningTxState::WAIT_LOCAL_RESPONSE;
+  tuningTxStartedMs = millis();
 }
 
 void handlePayloadHex(const String& hex) {
@@ -390,11 +524,26 @@ void handleIm920Line(const String& rawLine) {
     Serial.println(line);
   }
 
-  if (
-    line == "OK" ||
-    line == "NG" ||
-    line.startsWith("IM920")
-  ) {
+  if (line == "OK") {
+    // TXDA後のOKはローカルIM920の処理結果であり、PiがWGを受信した
+    // ことを保証しない。対応するapplication ACKまで次の結果へ進めない。
+    if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+      tuningTxState = GainTuningTxState::WAIT_REMOTE_ACK;
+      tuningTxStartedMs = millis();
+      Serial.print("[TUNE TX] local OK ");
+      Serial.println(gainTuningResultLabel(tuningTxIndex));
+    }
+    return;
+  }
+  if (line == "NG") {
+    if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+      Serial.print("[TUNE TX] local NG ");
+      Serial.println(gainTuningResultLabel(tuningTxIndex));
+      scheduleGainTuningResultRetry();
+    }
+    return;
+  }
+  if (line.startsWith("IM920")) {
     return;
   }
 
@@ -478,6 +627,12 @@ void im920CommCheckTimeout() {
     return;
   }
 
+  // result ACK待ちを含む通信状態もtimeoutを跨いで残さない。
+  if (tuningTxState != GainTuningTxState::IDLE) {
+    resetGainTuningTxState();
+    chassisCtrlClearGainTuningResultReady();
+  }
+
   if (chassisCtrlIsActive()) {
     Serial.println("COMM TIMEOUT -> STOP");
     chassisCtrlStop();
@@ -486,33 +641,13 @@ void im920CommCheckTimeout() {
   lastRxMs = millis();
 }
 
-void im920CommSendPeriodicStatus() {
-  if (!ENABLE_REPLY_TO_PI) {
-    return;
-  }
-
-  const uint32_t now = millis();
-
-  if (now - lastStatusTxMs < STATUS_TX_INTERVAL_MS) {
-    return;
-  }
-
-  lastStatusTxMs = now;
-
-  String message =
-    chassisCtrlIsActive() ? "STAT RUN " : "STAT STOP ";
-
-  message += "PWR=";
-  message += String(chassisCtrlGetPowerPercent());
-  message += canCommIsReady() ? " CAN=1" : " CAN=0";
-  message += " FB=";
-  message += String(canCommGetFeedbackMask(), HEX);
-
-  im920CommSendText(message);
-}
-
 void im920CommSendText(const String& text) {
   if (!ENABLE_REPLY_TO_PI || text.length() == 0) {
+    return;
+  }
+  if (text.length() > IM920_TXDA_MAX_PAYLOAD_BYTES) {
+    Serial.print("IM920 TXDA payload too long: ");
+    Serial.println(text.length());
     return;
   }
 

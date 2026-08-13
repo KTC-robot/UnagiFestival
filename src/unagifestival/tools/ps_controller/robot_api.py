@@ -17,7 +17,7 @@ class RobotTransport(Protocol):
 
     def send_drive(self, command: DriveCommand) -> None: ...
 
-    def send_set_gain(self, motor_id: int, kp: float, ki: float) -> None: ...
+    def send_set_wheel_gain(self, direction: int, wheel: int, gain: float) -> None: ...
 
     def send_gain_tune_start(
         self,
@@ -26,6 +26,8 @@ class RobotTransport(Protocol):
     ) -> None: ...
 
     def send_gain_tune_keepalive(self) -> None: ...
+
+    def send_gain_tune_result_ack(self, result_index: int) -> None: ...
 
     def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
@@ -48,8 +50,8 @@ class RobotApi:
     def drive(self, command: DriveCommand) -> None:
         self._transport.send_drive(command)
 
-    def set_gain(self, motor_id: int, kp: float, ki: float) -> None:
-        self._transport.send_set_gain(motor_id, kp, ki)
+    def set_wheel_gain(self, direction: int, wheel: int, gain: float) -> None:
+        self._transport.send_set_wheel_gain(direction, wheel, gain)
 
     def start_gain_tuning(
         self,
@@ -60,6 +62,13 @@ class RobotApi:
 
     def gain_tuning_keepalive(self) -> None:
         self._transport.send_gain_tune_keepalive()
+
+    def ack_gain_tuning_result(self, result_index: int) -> None:
+        """受信済みgain tuning結果のapplication ACKを送信する.
+
+        0-3はWG0-WG3、4はWDを表す。duplicate結果にも毎回送信する.
+        """
+        self._transport.send_gain_tune_result_ack(result_index)
 
     def set_servo(self, command: ServoSetCommand) -> None:
         self._transport.send_servo_set(command)

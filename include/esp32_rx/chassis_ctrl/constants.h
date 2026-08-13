@@ -21,6 +21,7 @@ constexpr float TARGET_RPM_SLEW_PER_SEC = 6000.0f;
 constexpr bool ENABLE_GAIN_TUNING_LOG = false;
 constexpr uint32_t GAIN_TUNING_LOG_INTERVAL_MS = 100;
 constexpr uint32_t GAIN_TUNING_MAX_DURATION_MS = 10000;
+constexpr float GAIN_TUNING_RAMP_TOLERANCE_RPM = 50.0f;
 
 constexpr uint32_t MOTOR_CONTROL_INTERVAL_US = 5000;
 
@@ -49,19 +50,19 @@ const int8_t FWD_SIGN[NUM_WHEELS] = {+1, +1, +1, +1};
 const int8_t STR_SIGN[NUM_WHEELS] = {+1, -1, -1, +1};
 const int8_t YAW_SIGN[NUM_WHEELS] = {-1, +1, -1, +1};
 
-const float WHEEL_GAIN_FWD[NUM_WHEELS] = {
+constexpr float DEFAULT_WHEEL_GAIN_FWD[NUM_WHEELS] = {
   1.000f, 1.000f, 1.000f, 1.000f
 };
 
-const float WHEEL_GAIN_BWD[NUM_WHEELS] = {
+constexpr float DEFAULT_WHEEL_GAIN_BWD[NUM_WHEELS] = {
   1.000f, 1.000f, 1.000f, 1.000f
 };
 
-const float WHEEL_GAIN_RIGHT[NUM_WHEELS] = {
+constexpr float DEFAULT_WHEEL_GAIN_RIGHT[NUM_WHEELS] = {
   1.000f, 1.000f, 1.000f, 1.000f
 };
 
-const float WHEEL_GAIN_LEFT[NUM_WHEELS] = {
+constexpr float DEFAULT_WHEEL_GAIN_LEFT[NUM_WHEELS] = {
   1.000f, 1.000f, 1.000f, 1.000f
 };
 

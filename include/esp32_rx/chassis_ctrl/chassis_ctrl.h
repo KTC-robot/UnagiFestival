@@ -2,19 +2,29 @@
 
 #include <Arduino.h>
 
+/**
+ * @file chassis_ctrl.h
+ * @brief メカナム足回りの目標生成、固定PI制御、wheel gain調整APIを提供する。
+ */
+
+/**
+ * @brief 1車輪分のwheel gain調整試験結果。
+ */
 struct ChassisGainTuningResult {
-  uint32_t sampleCount;
-  float meanAbsoluteError;
-  float rootMeanSquaredError;
-  float maximumAbsoluteError;
-  float finalError;
-  uint32_t saturationCount;
+  uint32_t sampleCount;          ///< RPM集計に使用した有効サンプル数。
+  float meanAbsoluteRpm;         ///< 実測RPM絶対値の平均。
+  float standardDeviationRpm;    ///< 実測RPM絶対値の母標準偏差。
 };
 
 /**
- * @file chassis_ctrl.h
- * @brief メカナム足回りの目標生成と速度PI制御APIを提供する。
+ * @brief wheel RPM補正ゲインを選択する、ユーザー指令基準の走行方向。
  */
+enum class ChassisGainDirection : uint8_t {
+  FORWARD = 0,   ///< 前進。
+  BACKWARD = 1,  ///< 後退。
+  RIGHT = 2,     ///< 右平行移動。
+  LEFT = 3       ///< 左平行移動。
+};
 
 /**
  * @brief 足回り制御の周期処理用時刻を初期化する。
@@ -60,17 +70,22 @@ void chassisCtrlStop();
 void chassisCtrlChangePower(int delta);
 
 /**
- * @brief 指定モーターの速度PIゲインを設定する。
+ * @brief 指定方向・車輪の目標RPM補正ゲインを設定する。
  *
- * @param motorIndex モーターインデックス。0がID1、3がID4。
- * @param kp 比例ゲイン。
- * @param ki 積分ゲイン。
- * @return 設定した場合true。インデックスが無効な場合false。
+ * @param direction 補正対象の走行方向。
+ * @param wheelIndex 車輪インデックス。0=FL、1=FR、2=RL、3=RR。
+ * @param gain 目標RPMへ掛ける補正係数。0.50〜1.50。
+ * @return true 設定に成功した場合。
+ * @return false direction、wheelIndex、gainのいずれかが不正な場合。
  */
-bool chassisCtrlSetSpeedGain(int motorIndex, float kp, float ki);
+bool chassisCtrlSetWheelGain(
+  ChassisGainDirection direction,
+  int wheelIndex,
+  float gain
+);
 
 /**
- * @brief PIゲイン評価用の自動走行試験を開始する。
+ * @brief 車輪ごとの実測RPM集計用の自動走行試験を開始する。
  *
  * @param vx 前後方向指令。範囲は-127〜127。
  * @param vy 左右方向指令。範囲は-127〜127。
@@ -84,18 +99,25 @@ void chassisCtrlStartGainTuning(
   uint32_t durationMs
 );
 
-/** @brief ゲイン調整試験が終了し、未送信の結果があるか確認する。 */
+/**
+ * @brief ゲイン調整試験が終了し、未送信の結果があるか確認する。
+ *
+ * @return true 未送信結果がある場合。
+ * @return false 試験中または結果送信済みの場合。
+ */
 bool chassisCtrlGainTuningResultReady();
 
 /**
- * @brief 指定モーターの直近のゲイン調整結果を取得する。
+ * @brief 指定車輪の直近のゲイン調整結果を取得する。
  *
- * @param motorIndex モーターインデックス。0がID1、3がID4。
- * @return 集計結果。
+ * @param wheelIndex 車輪インデックス。0=FL、1=FR、2=RL、3=RR。
+ * @return 指定車輪の集計結果。wheelIndexが不正な場合は全memberが0。
  */
-ChassisGainTuningResult chassisCtrlGetGainTuningResult(int motorIndex);
+ChassisGainTuningResult chassisCtrlGetGainTuningResult(int wheelIndex);
 
-/** @brief ゲイン調整結果を送信済みとしてマークする。 */
+/**
+ * @brief ゲイン調整結果を送信済みとしてマークする。
+ */
 void chassisCtrlClearGainTuningResultReady();
 
 /**

@@ -31,7 +31,7 @@ class IMWireClass:
 
         self.slave_adr = slave_address
 
-        GPIO.setwarnings(False)
+        GPIO.setwarnings(False)  # noqa: FBT003
         GPIO.setmode(GPIO.BCM)
 
         GPIO.setup(RESET_PIN, GPIO.OUT)
@@ -77,7 +77,13 @@ class IMWireClass:
     def Read_920(self) -> str:  # noqa: N802
         """IM920-HATから受信済みの1フレームを読み出す."""
         if GPIO.input(IRQ_PIN) == GPIO.HIGH:
-            self._read_from_i2c()
+            # IRQがHighの間は変換ICに複数フレームが滞留し得る。全件を
+            # Python側リングバッファへ移し、呼出しごとに1件ずつ返す。
+            for _ in range(64):
+                if GPIO.input(IRQ_PIN) != GPIO.HIGH:
+                    break
+                if not self._read_from_i2c():
+                    break
 
         buffer = ""
 
@@ -90,14 +96,14 @@ class IMWireClass:
 
         return buffer
 
-    def _read_from_i2c(self) -> None:
+    def _read_from_i2c(self) -> bool:
         try:
             received_length = self.i2c.read_byte(self.slave_adr)
         except OSError:
-            return
+            return False
 
         if received_length < 1:
-            return
+            return False
 
         buffer = ""
 
@@ -105,7 +111,9 @@ class IMWireClass:
             try:
                 buffer += chr(self.i2c.read_byte(self.slave_adr))
             except OSError:
-                break
+                # 長さで示されたフレームを読み切れなければpartial frameを
+                # 正常データとして公開しない。
+                return False
 
             received_length -= 1
 
@@ -121,6 +129,10 @@ class IMWireClass:
 
                 self.rxbuf_head += 1
                 self.rxbuf_head &= self.rxbuf_maxsize - 1
+
+            return True
+
+        return False
 
     def irq_intrpt(self, _gpio: int) -> None:
         """IRQ割り込みと同じ受信処理を行う互換用callback."""

@@ -51,6 +51,5 @@ void loop() {
   canCommSendPeriodically();
 
   im920CommCheckTimeout();
-  im920CommSendPeriodicStatus();
-  stepAssistCtrlUpdate();
+  // stepAssistCtrlUpdate();
 }
