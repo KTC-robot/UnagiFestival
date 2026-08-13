@@ -21,8 +21,9 @@ from unagifestival.tools.ps_controller.transport import Im920Transport
 type GainSetting = tuple[int, float]
 type TuningResult = dict[str, int | str]
 
-DEFAULT_KEEPALIVE_MS = 200
-DEFAULT_RESULT_TIMEOUT_MS = 3000
+DEFAULT_KEEPALIVE_MS = 100
+# result ACKのbounded retryをPi側が待ち切れるよう、走行終了後に余裕を持たせる。
+DEFAULT_RESULT_TIMEOUT_MS = 6000
 DEFAULT_GAIN_ACK_TIMEOUT_MS = 3000
 DEFAULT_SPEED = 20
 DEFAULT_CSV_PATH = Path("gain_tuning_results.csv")
@@ -34,6 +35,7 @@ GAIN_PART_COUNT = 2
 GAIN_ACK_ATTEMPT_TIMEOUT_SEC = 0.5
 GAIN_ACK_RETRY_COUNT = 3
 GAIN_TX_TURNAROUND_GUARD_SEC = 0.15
+RESULT_ACK_SETTLE_SEC = 0.7
 HEX_BYTE_CHAR_COUNT = 2
 WHEEL_COUNT = 4
 TUNING_DURATION_UNIT_MS = 100
@@ -321,6 +323,7 @@ def set_and_confirm_wheel_gains(
     Raises:
         TimeoutError: timeoutまでに正しいWGSが4輪分揃わない場合.
     """
+    overall_deadline = time.monotonic() + timeout_ms / 1000.0
     # 未指定wheelを含む4輪すべてを毎試験送信し、ESP32実値とcurrent_gainを同期する。
     for wheel in range(WHEEL_COUNT):
         gain = gains[wheel]
@@ -328,6 +331,8 @@ def set_and_confirm_wheel_gains(
         acknowledged = False
 
         for attempt in range(GAIN_ACK_RETRY_COUNT):
+            if time.monotonic() >= overall_deadline:
+                break
             logger.debug(
                 "[GAIN TX] wheel=%s attempt=%d",
                 WHEEL_NAMES[wheel],
@@ -340,9 +345,9 @@ def set_and_confirm_wheel_gains(
                 gain,
             )
 
-            deadline = (
-                time.monotonic()
-                + GAIN_ACK_ATTEMPT_TIMEOUT_SEC
+            deadline = min(
+                overall_deadline,
+                time.monotonic() + GAIN_ACK_ATTEMPT_TIMEOUT_SEC,
             )
 
             while time.monotonic() < deadline:
@@ -357,30 +362,18 @@ def set_and_confirm_wheel_gains(
                     time.sleep(0.01)
                     continue
 
-                ack_direction = int(
-                    match.group("direction")
-                )
-                ack_wheel = int(
-                    match.group("wheel")
-                )
-                ack_scaled = round(
-                    float(match.group("gain")) * 1000
-                )
+                ack_direction = int(match.group("direction"))
+                ack_wheel = int(match.group("wheel"))
+                ack_scaled = round(float(match.group("gain")) * 1000)
 
-                if (
-                    ack_direction == direction
-                    and ack_wheel == wheel
-                    and ack_scaled == round(gain * 1000)
-                ):
+                if ack_direction == direction and ack_wheel == wheel and ack_scaled == round(gain * 1000):
                     acknowledged = True
                     break
 
             if acknowledged:
                 # ESP32 -> Pi送信直後に逆方向へ送らず、
                 # 無線の送受信切替時間を確保する。
-                time.sleep(
-                    GAIN_TX_TURNAROUND_GUARD_SEC
-                )
+                time.sleep(GAIN_TX_TURNAROUND_GUARD_SEC)
                 break
 
             logger.warning(
@@ -390,10 +383,8 @@ def set_and_confirm_wheel_gains(
             )
 
         if not acknowledged:
-            raise TimeoutError(
-                "wheel gain acknowledgement timeout; "
-                f"missing: {WHEEL_NAMES[wheel]}"
-            )
+            detail = f"wheel gain acknowledgement timeout; missing: {WHEEL_NAMES[wheel]}"
+            raise TimeoutError(detail)
 
 
 def collect_tuning_results(
@@ -419,6 +410,7 @@ def collect_tuning_results(
     """
     results: dict[int, TuningResult] = {}
     done_received = False
+    completion_deadline: float | None = None
     started = time.monotonic()
     tuning_end = started + duration_ms / 1000.0
     deadline = tuning_end + result_timeout_ms / 1000.0
@@ -435,6 +427,7 @@ def collect_tuning_results(
         result = parse_tuning_result(text)
         if result is not None:
             wheel = int(result["wheel"])
+            # ACK欠損によるduplicate WGも上書き保存し、必ず再ACKする。
             results[wheel] = result
             logger.debug(
                 "[RX RESULT] wheel=%s rpm=%s samples=%s",
@@ -442,12 +435,20 @@ def collect_tuning_results(
                 result["mean_rpm"],
                 result["sample_count"],
             )
+            robot.ack_gain_tuning_result(wheel)
+            logger.debug("[RESULT ACK TX] WG%s", wheel)
         elif text == "WD":
             done_received = True
             logger.debug("[RX DONE] WD")
+            robot.ack_gain_tuning_result(WHEEL_COUNT)
+            logger.debug("[RESULT ACK TX] WD")
 
         # WDだけでは成功にせず、wheel番号をsequenceとして完全性を確認する。
-        if done_received and len(results) == WHEEL_COUNT:
+        if done_received and len(results) == WHEEL_COUNT and completion_deadline is None:
+            # ACK4欠損時に再送されるWDにも応答できる短い受信猶予を設ける。
+            completion_deadline = time.monotonic() + RESULT_ACK_SETTLE_SEC
+            deadline = max(deadline, completion_deadline)
+        if completion_deadline is not None and time.monotonic() >= completion_deadline:
             break
         time.sleep(0.01)
 

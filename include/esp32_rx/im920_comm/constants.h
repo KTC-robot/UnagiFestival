@@ -35,7 +35,9 @@ enum class ControlCommand : uint8_t {
   DRIVE = 0x04,
   SET_WHEEL_GAIN = 0x05,
   GAIN_TUNE_START = 0x06,
-  GAIN_TUNE_KEEPALIVE = 0x07
+  GAIN_TUNE_KEEPALIVE = 0x07,
+  // payload 0..3はWG0..WG3、4はWDをPiが受信したことを示す。
+  GAIN_TUNE_RESULT_ACK = 0x08
 };
 
 constexpr float GAIN_WIRE_SCALE = 1000.0f;
@@ -43,6 +45,9 @@ constexpr uint32_t GAIN_TUNING_DURATION_UNIT_MS = 100;
 constexpr uint32_t GAIN_TUNING_MAX_DURATION_MS = 10000;
 constexpr int GAIN_TUNING_WHEEL_COUNT = 4;
 constexpr uint32_t GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS = 1000;
+constexpr uint32_t GAIN_TUNING_RESULT_ACK_TIMEOUT_MS = 400;
+constexpr uint32_t GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS = 150;
+constexpr uint8_t GAIN_TUNING_RESULT_MAX_RETRIES = 3;
 
 // Raspberry Pi側で確認済みのIM920設定。
 // 自動書き換えはせず、起動時にESP32側の値を読み出して比較する。

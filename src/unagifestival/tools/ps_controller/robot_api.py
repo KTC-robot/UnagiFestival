@@ -27,6 +27,8 @@ class RobotTransport(Protocol):
 
     def send_gain_tune_keepalive(self) -> None: ...
 
+    def send_gain_tune_result_ack(self, result_index: int) -> None: ...
+
     def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
 
@@ -60,6 +62,13 @@ class RobotApi:
 
     def gain_tuning_keepalive(self) -> None:
         self._transport.send_gain_tune_keepalive()
+
+    def ack_gain_tuning_result(self, result_index: int) -> None:
+        """受信済みgain tuning結果のapplication ACKを送信する.
+
+        0-3はWG0-WG3、4はWDを表す。duplicate結果にも毎回送信する.
+        """
+        self._transport.send_gain_tune_result_ack(result_index)
 
     def set_servo(self, command: ServoSetCommand) -> None:
         self._transport.send_servo_set(command)

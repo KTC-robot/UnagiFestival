@@ -19,9 +19,22 @@ uint32_t ledOffAt = 0;
 
 uint32_t lastRxMs = 0;
 uint32_t driveCommandCount = 0;
+
+/**
+ * @brief gain tuning結果1件のstop-and-wait送信状態。
+ */
+enum class GainTuningTxState : uint8_t {
+  IDLE,                 ///< 未送信結果なし。
+  WAIT_LOCAL_RESPONSE,  ///< ローカルIM920のOK/NG待ち。
+  WAIT_REMOTE_ACK,      ///< Raspberry Piのapplication ACK待ち。
+  TURNAROUND_GUARD      ///< 無線の送受信切替待ち。
+};
+
 int tuningTxIndex = -1;
-bool tuningTxWaitingForResponse = false;
+GainTuningTxState tuningTxState = GainTuningTxState::IDLE;
+uint8_t tuningTxAttemptCount = 0;
 uint32_t tuningTxStartedMs = 0;
+uint32_t tuningTxAllowedMs = 0;
 
 /**
  * @brief wheel gain調整結果の逐次送信状態を初期状態へ戻す。
@@ -30,8 +43,32 @@ uint32_t tuningTxStartedMs = 0;
  */
 void resetGainTuningTxState() {
   tuningTxIndex = -1;
-  tuningTxWaitingForResponse = false;
+  tuningTxState = GainTuningTxState::IDLE;
+  tuningTxAttemptCount = 0;
   tuningTxStartedMs = 0;
+  tuningTxAllowedMs = 0;
+}
+
+String gainTuningResultLabel(int index) {
+  return index < GAIN_TUNING_WHEEL_COUNT
+    ? String("WG") + String(index)
+    : "WD";
+}
+
+void failGainTuningResultTx() {
+  Serial.print("GAIN TUNING result ACK timeout packet=");
+  Serial.println(gainTuningResultLabel(tuningTxIndex));
+  chassisCtrlClearGainTuningResultReady();
+  resetGainTuningTxState();
+}
+
+void scheduleGainTuningResultRetry() {
+  if (tuningTxAttemptCount > GAIN_TUNING_RESULT_MAX_RETRIES) {
+    failGainTuningResultTx();
+    return;
+  }
+  tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+  tuningTxAllowedMs = millis() + GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS;
 }
 
 uint16_t parseUint16(const String& hex, int offset) {
@@ -336,6 +373,36 @@ void handleControlPacket(const String& hex) {
     case ControlCommand::GAIN_TUNE_KEEPALIVE:
       break;
 
+    case ControlCommand::GAIN_TUNE_RESULT_ACK: {
+      if (hex.length() < 6) {
+        return;
+      }
+      const uint8_t ackIndex =
+        utilHexByteToUint8(hex.substring(4, 6));
+      if (tuningTxState != GainTuningTxState::WAIT_REMOTE_ACK ||
+          ackIndex != tuningTxIndex ||
+          ackIndex > GAIN_TUNING_WHEEL_COUNT) {
+        return;
+      }
+
+      Serial.print("[TUNE ACK] ");
+      Serial.println(gainTuningResultLabel(ackIndex));
+
+      if (ackIndex == GAIN_TUNING_WHEEL_COUNT) {
+        chassisCtrlClearGainTuningResultReady();
+        resetGainTuningTxState();
+        return;
+      }
+
+      ++tuningTxIndex;
+      tuningTxAttemptCount = 0;
+      // PiからのACK直後に次のWGを送らず、無線の方向切替時間を確保する。
+      tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+      tuningTxAllowedMs =
+        millis() + GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS;
+      break;
+    }
+
     default:
       Serial.println("CONTROL unknown command");
       break;
@@ -348,15 +415,39 @@ void sendGainTuningResultsIfReady() {
       return;
     }
     tuningTxIndex = 0;
-    tuningTxWaitingForResponse = false;
+    tuningTxAttemptCount = 0;
+    tuningTxState = GainTuningTxState::TURNAROUND_GUARD;
+    tuningTxAllowedMs = millis();
   }
 
-  if (tuningTxWaitingForResponse) {
-    if (millis() - tuningTxStartedMs <= GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) {
+  if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+    if (millis() - tuningTxStartedMs < GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) {
       return;
     }
-    // ローカルIM920から応答がない場合はindexを進めず、同じ結果を再送する。
-    tuningTxWaitingForResponse = false;
+    Serial.print("[TUNE TX] local response timeout ");
+    Serial.println(gainTuningResultLabel(tuningTxIndex));
+    scheduleGainTuningResultRetry();
+    return;
+  }
+
+  if (tuningTxState == GainTuningTxState::WAIT_REMOTE_ACK) {
+    if (millis() - tuningTxStartedMs < GAIN_TUNING_RESULT_ACK_TIMEOUT_MS) {
+      return;
+    }
+    Serial.print("[TUNE ACK] timeout ");
+    Serial.println(gainTuningResultLabel(tuningTxIndex));
+    scheduleGainTuningResultRetry();
+    return;
+  }
+
+  if (tuningTxState != GainTuningTxState::TURNAROUND_GUARD ||
+      static_cast<int32_t>(millis() - tuningTxAllowedMs) < 0) {
+    return;
+  }
+
+  if (tuningTxAttemptCount > GAIN_TUNING_RESULT_MAX_RETRIES) {
+    failGainTuningResultTx();
+    return;
   }
 
   String message;
@@ -374,11 +465,13 @@ void sendGainTuningResultsIfReady() {
     message += String(static_cast<int>(lroundf(result.standardDeviationRpm)));
   } else if (tuningTxIndex == GAIN_TUNING_WHEEL_COUNT) {
     message = "WD";
-  } else {
-    resetGainTuningTxState();
-    chassisCtrlClearGainTuningResultReady();
-    return;
-  }
+  } else return;
+
+  ++tuningTxAttemptCount;
+  Serial.print("[TUNE TX] ");
+  Serial.print(gainTuningResultLabel(tuningTxIndex));
+  Serial.print(" attempt=");
+  Serial.println(tuningTxAttemptCount);
 
   if (ENABLE_GAIN_TUNING_TX_LOG) {
     Serial.print("[TUNE TX] text=");
@@ -393,7 +486,7 @@ void sendGainTuningResultsIfReady() {
     Serial.println(tuningTxIndex);
   }
   im920CommSendText(message);
-  tuningTxWaitingForResponse = true;
+  tuningTxState = GainTuningTxState::WAIT_LOCAL_RESPONSE;
   tuningTxStartedMs = millis();
 }
 
@@ -432,17 +525,21 @@ void handleIm920Line(const String& rawLine) {
   }
 
   if (line == "OK") {
-    // TXDA後のOKはローカルIM920の送信処理完了を示す応答であり、
-    // Raspberry Pi側まで届いたことを保証するdelivery ACKではない。
-    if (tuningTxWaitingForResponse) {
-      tuningTxWaitingForResponse = false;
-      ++tuningTxIndex;
+    // TXDA後のOKはローカルIM920の処理結果であり、PiがWGを受信した
+    // ことを保証しない。対応するapplication ACKまで次の結果へ進めない。
+    if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+      tuningTxState = GainTuningTxState::WAIT_REMOTE_ACK;
+      tuningTxStartedMs = millis();
+      Serial.print("[TUNE TX] local OK ");
+      Serial.println(gainTuningResultLabel(tuningTxIndex));
     }
     return;
   }
   if (line == "NG") {
-    if (tuningTxWaitingForResponse) {
-      tuningTxWaitingForResponse = false;
+    if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
+      Serial.print("[TUNE TX] local NG ");
+      Serial.println(gainTuningResultLabel(tuningTxIndex));
+      scheduleGainTuningResultRetry();
     }
     return;
   }
@@ -530,9 +627,14 @@ void im920CommCheckTimeout() {
     return;
   }
 
+  // result ACK待ちを含む通信状態もtimeoutを跨いで残さない。
+  if (tuningTxState != GainTuningTxState::IDLE) {
+    resetGainTuningTxState();
+    chassisCtrlClearGainTuningResultReady();
+  }
+
   if (chassisCtrlIsActive()) {
     Serial.println("COMM TIMEOUT -> STOP");
-    resetGainTuningTxState();
     chassisCtrlStop();
   }
 

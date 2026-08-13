@@ -21,11 +21,13 @@ class ControlCommand(IntEnum):
     SET_WHEEL_GAIN = 0x05
     GAIN_TUNE_START = 0x06
     GAIN_TUNE_KEEPALIVE = 0x07
+    GAIN_TUNE_RESULT_ACK = 0x08
 
 
 GAIN_WIRE_SCALE = 1000
 GAIN_TUNING_DURATION_UNIT_MS = 100
 GAIN_TUNING_MAX_DURATION_MS = 10_000
+GAIN_TUNING_DONE_ACK_INDEX = 4
 WHEEL_INDEX_MIN = 0
 WHEEL_INDEX_MAX = 3
 GAIN_DIRECTION_MIN = 0
@@ -37,6 +39,7 @@ INVALID_WHEEL_MESSAGE = "wheel must be between 0 and 3"
 INVALID_DIRECTION_MESSAGE = "direction must be between 0 and 3"
 INVALID_GAIN_MESSAGE = "gain must be between 0.50 and 1.50"
 INVALID_TUNING_DURATION_MESSAGE = "duration_ms must be 100..10000 in 100 ms units"
+INVALID_RESULT_ACK_MESSAGE = "result_index must be between 0 and 4"
 
 
 class Im920Device(Protocol):
@@ -152,6 +155,22 @@ class Im920Transport:
 
     def send_gain_tune_keepalive(self) -> None:
         self._send_control(ControlCommand.GAIN_TUNE_KEEPALIVE)
+
+    def send_gain_tune_result_ack(self, result_index: int) -> None:
+        """受信したWG0-WG3またはWDをESP32へ通知する.
+
+        Args:
+            result_index: 0-3はWG0-WG3、4はWD.
+
+        Raises:
+            ValueError: result_indexが0-4の範囲外の場合.
+        """
+        if not 0 <= result_index <= GAIN_TUNING_DONE_ACK_INDEX:
+            raise ValueError(INVALID_RESULT_ACK_MESSAGE)
+        self._send_control(
+            ControlCommand.GAIN_TUNE_RESULT_ACK,
+            self._byte_to_hex(result_index),
+        )
 
     def send_servo_set(self, command: ServoSetCommand) -> None:
         payload = self._byte_to_hex(PacketType.SERVO_SET)
