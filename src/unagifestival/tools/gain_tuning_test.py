@@ -31,6 +31,9 @@ WHEEL_GAIN_MIN = 0.50
 WHEEL_GAIN_MAX = 1.50
 MIN_VALID_RPM = 1.0
 GAIN_PART_COUNT = 2
+GAIN_ACK_ATTEMPT_TIMEOUT_SEC = 0.5
+GAIN_ACK_RETRY_COUNT = 3
+GAIN_TX_TURNAROUND_GUARD_SEC = 0.15
 HEX_BYTE_CHAR_COUNT = 2
 WHEEL_COUNT = 4
 TUNING_DURATION_UNIT_MS = 100
@@ -318,49 +321,79 @@ def set_and_confirm_wheel_gains(
     Raises:
         TimeoutError: timeoutまでに正しいWGSが4輪分揃わない場合.
     """
-    expected_scaled = {wheel: round(gain * 1000) for wheel, gain in gains.items()}
-    acknowledged_wheels: set[int] = set()
-
     # 未指定wheelを含む4輪すべてを毎試験送信し、ESP32実値とcurrent_gainを同期する。
     for wheel in range(WHEEL_COUNT):
         gain = gains[wheel]
-        logger.debug(
-            "[GAIN TX] direction=%s wheel=%s gain=%.3f",
-            direction,
-            WHEEL_NAMES[wheel],
-            gain,
-        )
-        robot.set_wheel_gain(direction, wheel, gain)
-        time.sleep(0.1)
 
-    deadline = time.monotonic() + timeout_ms / 1000.0
-    while time.monotonic() < deadline and len(acknowledged_wheels) < WHEEL_COUNT:
-        text = read_decoded_frame(transport, logger)
-        match = WHEEL_GAIN_ACK_PATTERN.fullmatch(text)
-        if match is None:
-            time.sleep(0.01)
-            continue
+        acknowledged = False
 
-        ack_direction = int(match.group("direction"))
-        wheel = int(match.group("wheel"))
-        ack_scaled = round(float(match.group("gain")) * 1000)
-        if ack_direction != direction or ack_scaled != expected_scaled[wheel]:
-            logger.warning("[GAIN ACK] mismatch: %s", text)
-            continue
+        for attempt in range(GAIN_ACK_RETRY_COUNT):
+            logger.debug(
+                "[GAIN TX] wheel=%s attempt=%d",
+                WHEEL_NAMES[wheel],
+                attempt + 1,
+            )
 
-        acknowledged_wheels.add(wheel)
-        logger.debug(
-            "[GAIN ACK] direction=%s wheel=%s gain=%.3f",
-            ack_direction,
-            WHEEL_NAMES[wheel],
-            ack_scaled / 1000.0,
-        )
+            robot.set_wheel_gain(
+                direction,
+                wheel,
+                gain,
+            )
 
-    missing = set(range(WHEEL_COUNT)) - acknowledged_wheels
-    if missing:
-        labels = ", ".join(WHEEL_NAMES[wheel] for wheel in sorted(missing))
-        detail = f"wheel gain acknowledgement timeout; missing: {labels}"
-        raise TimeoutError(detail)
+            deadline = (
+                time.monotonic()
+                + GAIN_ACK_ATTEMPT_TIMEOUT_SEC
+            )
+
+            while time.monotonic() < deadline:
+                text = read_decoded_frame(
+                    transport,
+                    logger,
+                )
+
+                match = WHEEL_GAIN_ACK_PATTERN.fullmatch(text)
+
+                if match is None:
+                    time.sleep(0.01)
+                    continue
+
+                ack_direction = int(
+                    match.group("direction")
+                )
+                ack_wheel = int(
+                    match.group("wheel")
+                )
+                ack_scaled = round(
+                    float(match.group("gain")) * 1000
+                )
+
+                if (
+                    ack_direction == direction
+                    and ack_wheel == wheel
+                    and ack_scaled == round(gain * 1000)
+                ):
+                    acknowledged = True
+                    break
+
+            if acknowledged:
+                # ESP32 -> Pi送信直後に逆方向へ送らず、
+                # 無線の送受信切替時間を確保する。
+                time.sleep(
+                    GAIN_TX_TURNAROUND_GUARD_SEC
+                )
+                break
+
+            logger.warning(
+                "[GAIN ACK] timeout wheel=%s attempt=%d",
+                WHEEL_NAMES[wheel],
+                attempt + 1,
+            )
+
+        if not acknowledged:
+            raise TimeoutError(
+                "wheel gain acknowledgement timeout; "
+                f"missing: {WHEEL_NAMES[wheel]}"
+            )
 
 
 def collect_tuning_results(
