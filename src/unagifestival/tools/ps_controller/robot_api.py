@@ -17,7 +17,7 @@ class RobotTransport(Protocol):
 
     def send_drive(self, command: DriveCommand) -> None: ...
 
-    def send_set_gain(self, motor_id: int, kp: float, ki: float) -> None: ...
+    def send_set_wheel_gain(self, direction: int, wheel: int, gain: float) -> None: ...
 
     def send_gain_tune_start(
         self,
@@ -48,8 +48,8 @@ class RobotApi:
     def drive(self, command: DriveCommand) -> None:
         self._transport.send_drive(command)
 
-    def set_gain(self, motor_id: int, kp: float, ki: float) -> None:
-        self._transport.send_set_gain(motor_id, kp, ki)
+    def set_wheel_gain(self, direction: int, wheel: int, gain: float) -> None:
+        self._transport.send_set_wheel_gain(direction, wheel, gain)
 
     def start_gain_tuning(
         self,

@@ -4,11 +4,15 @@
 
 struct ChassisGainTuningResult {
   uint32_t sampleCount;
-  float meanAbsoluteError;
-  float rootMeanSquaredError;
-  float maximumAbsoluteError;
-  float finalError;
-  uint32_t saturationCount;
+  float meanAbsoluteRpm;
+  float standardDeviationRpm;
+};
+
+enum class ChassisGainDirection : uint8_t {
+  FORWARD = 0,
+  BACKWARD = 1,
+  RIGHT = 2,
+  LEFT = 3
 };
 
 /**
@@ -60,17 +64,21 @@ void chassisCtrlStop();
 void chassisCtrlChangePower(int delta);
 
 /**
- * @brief 指定モーターの速度PIゲインを設定する。
+ * @brief 指定方向・車輪の目標RPM補正ゲインを設定する。
  *
- * @param motorIndex モーターインデックス。0がID1、3がID4。
- * @param kp 比例ゲイン。
- * @param ki 積分ゲイン。
- * @return 設定した場合true。インデックスが無効な場合false。
+ * @param direction 走行方向。
+ * @param wheelIndex 車輪インデックス。0=FL、1=FR、2=RL、3=RR。
+ * @param gain 目標RPM補正係数。0.50〜1.50。
+ * @return 設定した場合true。パラメーターが無効な場合false。
  */
-bool chassisCtrlSetSpeedGain(int motorIndex, float kp, float ki);
+bool chassisCtrlSetWheelGain(
+  ChassisGainDirection direction,
+  int wheelIndex,
+  float gain
+);
 
 /**
- * @brief PIゲイン評価用の自動走行試験を開始する。
+ * @brief 車輪ごとの実測RPM集計用の自動走行試験を開始する。
  *
  * @param vx 前後方向指令。範囲は-127〜127。
  * @param vy 左右方向指令。範囲は-127〜127。
@@ -88,12 +96,12 @@ void chassisCtrlStartGainTuning(
 bool chassisCtrlGainTuningResultReady();
 
 /**
- * @brief 指定モーターの直近のゲイン調整結果を取得する。
+ * @brief 指定車輪の直近のゲイン調整結果を取得する。
  *
- * @param motorIndex モーターインデックス。0がID1、3がID4。
+ * @param wheelIndex 車輪インデックス。0=FL、1=FR、2=RL、3=RR。
  * @return 集計結果。
  */
-ChassisGainTuningResult chassisCtrlGetGainTuningResult(int motorIndex);
+ChassisGainTuningResult chassisCtrlGetGainTuningResult(int wheelIndex);
 
 /** @brief ゲイン調整結果を送信済みとしてマークする。 */
 void chassisCtrlClearGainTuningResultReady();

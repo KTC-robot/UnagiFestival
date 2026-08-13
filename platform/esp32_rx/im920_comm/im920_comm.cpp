@@ -20,6 +20,9 @@ uint32_t ledOffAt = 0;
 uint32_t lastRxMs = 0;
 uint32_t lastStatusTxMs = 0;
 uint32_t driveCommandCount = 0;
+int tuningTxIndex = -1;
+bool tuningTxWaitingForResponse = false;
+uint32_t tuningTxStartedMs = 0;
 
 uint16_t parseUint16(const String& hex, int offset) {
   return static_cast<uint16_t>(
@@ -252,29 +255,33 @@ void handleControlPacket(const String& hex) {
       break;
     }
 
-    case ControlCommand::SET_GAIN: {
-      if (hex.length() < 16) {
+    case ControlCommand::SET_WHEEL_GAIN: {
+      if (hex.length() < 12) {
         return;
       }
 
-      const uint8_t motorId =
+      const uint8_t direction =
         utilHexByteToUint8(hex.substring(4, 6));
-      const float kp =
-        static_cast<float>(parseUint16(hex, 6)) / GAIN_WIRE_SCALE;
-      const float ki =
-        static_cast<float>(parseUint16(hex, 10)) / GAIN_WIRE_SCALE;
+      const uint8_t wheelIndex =
+        utilHexByteToUint8(hex.substring(6, 8));
+      const float gain =
+        static_cast<float>(parseUint16(hex, 8)) / GAIN_WIRE_SCALE;
 
-      if (!chassisCtrlSetSpeedGain(static_cast<int>(motorId) - 1, kp, ki)) {
-        Serial.println("GAIN SET invalid motor");
+      if (!chassisCtrlSetWheelGain(
+            static_cast<ChassisGainDirection>(direction),
+            wheelIndex,
+            gain
+          )) {
+        Serial.println("WHEEL GAIN SET invalid parameters");
         return;
       }
 
-      String reply = "GAIN SET M";
-      reply += String(motorId);
-      reply += " KP=";
-      reply += String(kp, 3);
-      reply += " KI=";
-      reply += String(ki, 3);
+      String reply = "WGS,";
+      reply += String(direction);
+      reply += ",";
+      reply += String(wheelIndex);
+      reply += ",";
+      reply += String(gain, 3);
       im920CommSendText(reply);
       break;
     }
@@ -322,38 +329,58 @@ void handleControlPacket(const String& hex) {
 }
 
 void sendGainTuningResultsIfReady() {
-  if (!chassisCtrlGainTuningResultReady()) {
+  if (tuningTxIndex < 0) {
+    if (!chassisCtrlGainTuningResultReady()) {
+      return;
+    }
+    tuningTxIndex = 0;
+    tuningTxWaitingForResponse = false;
+  }
+
+  if (tuningTxWaitingForResponse) {
+    if (millis() - tuningTxStartedMs <= GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) {
+      return;
+    }
+    // No local-module response: retry this frame instead of silently advancing.
+    tuningTxWaitingForResponse = false;
+  }
+
+  String message;
+  if (tuningTxIndex < GAIN_TUNING_WHEEL_COUNT) {
+    const int wheelIndex = tuningTxIndex;
+    const ChassisGainTuningResult result =
+      chassisCtrlGetGainTuningResult(wheelIndex);
+    message = "WG";
+    message += String(wheelIndex);
+    message += ",";
+    message += String(static_cast<int>(lroundf(result.meanAbsoluteRpm)));
+    message += ",";
+    message += String(result.sampleCount);
+    message += ",";
+    message += String(static_cast<int>(lroundf(result.standardDeviationRpm)));
+  } else if (tuningTxIndex == GAIN_TUNING_WHEEL_COUNT) {
+    message = "WD";
+  } else {
+    tuningTxIndex = -1;
+    chassisCtrlClearGainTuningResultReady();
     return;
   }
 
-  for (
-    int motorIndex = 0;
-    motorIndex < GAIN_TUNING_MOTOR_COUNT;
-    ++motorIndex
-  ) {
-    const ChassisGainTuningResult result =
-      chassisCtrlGetGainTuningResult(motorIndex);
-    const uint32_t saturationPercent = result.sampleCount > 0
-      ? result.saturationCount * 100U / result.sampleCount
-      : 0;
-
-    String message = "TUNE M";
-    message += String(motorIndex + 1);
-    message += " MAE=";
-    message += String(static_cast<int>(lroundf(result.meanAbsoluteError)));
-    message += " RMSE=";
-    message += String(static_cast<int>(lroundf(result.rootMeanSquaredError)));
-    message += " MAX=";
-    message += String(static_cast<int>(lroundf(result.maximumAbsoluteError)));
-    message += " FINAL=";
-    message += String(static_cast<int>(lroundf(result.finalError)));
-    message += " SAT=";
-    message += String(saturationPercent);
-    im920CommSendText(message);
+  if (ENABLE_GAIN_TUNING_TX_LOG) {
+    Serial.print("[TUNE TX] text=");
+    Serial.println(message);
+    Serial.print("[TUNE TX] text_len=");
+    Serial.println(message.length());
+    Serial.print("[TUNE TX] hex_len=");
+    Serial.println(message.length() * 2);
+    Serial.print("[TUNE TX] command_len=");
+    Serial.println(5 + message.length() * 2);
+    Serial.print("[TUNE TX] index=");
+    Serial.println(tuningTxIndex);
   }
-
-  im920CommSendText("TUNE DONE");
-  chassisCtrlClearGainTuningResultReady();
+  im920CommSendText(message);
+  tuningTxWaitingForResponse = true;
+  tuningTxStartedMs = millis();
 }
 
 void handlePayloadHex(const String& hex) {
@@ -390,11 +417,20 @@ void handleIm920Line(const String& rawLine) {
     Serial.println(line);
   }
 
-  if (
-    line == "OK" ||
-    line == "NG" ||
-    line.startsWith("IM920")
-  ) {
+  if (line == "OK") {
+    if (tuningTxWaitingForResponse) {
+      tuningTxWaitingForResponse = false;
+      ++tuningTxIndex;
+    }
+    return;
+  }
+  if (line == "NG") {
+    if (tuningTxWaitingForResponse) {
+      tuningTxWaitingForResponse = false;
+    }
+    return;
+  }
+  if (line.startsWith("IM920")) {
     return;
   }
 
@@ -487,7 +523,7 @@ void im920CommCheckTimeout() {
 }
 
 void im920CommSendPeriodicStatus() {
-  if (!ENABLE_REPLY_TO_PI) {
+  if (!ENABLE_REPLY_TO_PI || tuningTxIndex >= 0) {
     return;
   }
 
@@ -513,6 +549,11 @@ void im920CommSendPeriodicStatus() {
 
 void im920CommSendText(const String& text) {
   if (!ENABLE_REPLY_TO_PI || text.length() == 0) {
+    return;
+  }
+  if (text.length() > IM920_TXDA_MAX_PAYLOAD_BYTES) {
+    Serial.print("IM920 TXDA payload too long: ");
+    Serial.println(text.length());
     return;
   }
 

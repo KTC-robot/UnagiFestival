@@ -16,16 +16,15 @@ float longitudinalCommand = 0.0f;
 float requestedMotorRpm[NUM_MOTORS] = {};
 float rampedMotorRpm[NUM_MOTORS] = {};
 float pidIntegral[NUM_MOTORS] = {};
-float speedKp[NUM_MOTORS] = {};
-float speedKi[NUM_MOTORS] = {};
+float wheelGainFwd[NUM_WHEELS] = {};
+float wheelGainBwd[NUM_WHEELS] = {};
+float wheelGainRight[NUM_WHEELS] = {};
+float wheelGainLeft[NUM_WHEELS] = {};
 
 struct GainTuningAccumulator {
   uint32_t sampleCount;
-  double absoluteErrorSum;
-  double squaredErrorSum;
-  float maximumAbsoluteError;
-  float finalError;
-  uint32_t saturationCount;
+  double absoluteRpmSum;
+  double absoluteRpmSquaredSum;
 };
 
 GainTuningAccumulator tuningStats[NUM_MOTORS] = {};
@@ -40,9 +39,9 @@ uint32_t lastMotorControlUs = 0;
 uint32_t lastMotorPrintMs = 0;
 
 void clearTuningStats() {
-  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
-    tuningStats[motorIndex] = {};
-    tuningResults[motorIndex] = {};
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    tuningStats[wheelIndex] = {};
+    tuningResults[wheelIndex] = {};
   }
 }
 
@@ -50,22 +49,22 @@ void finishGainTuning() {
   tuningActive = false;
   chassisCtrlStop();
 
-  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
-    const GainTuningAccumulator& stats = tuningStats[motorIndex];
-    ChassisGainTuningResult& result = tuningResults[motorIndex];
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const GainTuningAccumulator& stats = tuningStats[wheelIndex];
+    ChassisGainTuningResult& result = tuningResults[wheelIndex];
 
     result.sampleCount = stats.sampleCount;
-    result.maximumAbsoluteError = stats.maximumAbsoluteError;
-    result.finalError = stats.finalError;
-    result.saturationCount = stats.saturationCount;
-
     if (stats.sampleCount > 0) {
-      result.meanAbsoluteError = static_cast<float>(
-        stats.absoluteErrorSum / static_cast<double>(stats.sampleCount)
+      result.meanAbsoluteRpm = static_cast<float>(
+        stats.absoluteRpmSum / static_cast<double>(stats.sampleCount)
       );
-      result.rootMeanSquaredError = static_cast<float>(sqrt(
-        stats.squaredErrorSum / static_cast<double>(stats.sampleCount)
-      ));
+      const double variance = max(
+        0.0,
+        stats.absoluteRpmSquaredSum / static_cast<double>(stats.sampleCount) -
+          static_cast<double>(result.meanAbsoluteRpm) *
+          static_cast<double>(result.meanAbsoluteRpm)
+      );
+      result.standardDeviationRpm = static_cast<float>(sqrt(variance));
     }
   }
 
@@ -213,15 +212,15 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     const float yaw = static_cast<float>(YAW_SIGN[wheelIndex]) * wz;
 
     if (vx > 0.0f) {
-      forward *= WHEEL_GAIN_FWD[wheelIndex];
+      forward *= wheelGainFwd[wheelIndex];
     } else if (vx < 0.0f) {
-      forward *= WHEEL_GAIN_BWD[wheelIndex];
+      forward *= wheelGainBwd[wheelIndex];
     }
 
     if (vy > 0.0f) {
-      strafe *= WHEEL_GAIN_RIGHT[wheelIndex];
+      strafe *= wheelGainRight[wheelIndex];
     } else if (vy < 0.0f) {
-      strafe *= WHEEL_GAIN_LEFT[wheelIndex];
+      strafe *= wheelGainLeft[wheelIndex];
     }
 
     wheel[wheelIndex] = forward + strafe + yaw;
@@ -271,9 +270,11 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 void chassisCtrlBegin() {
   lastMotorControlUs = micros();
 
-  for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
-    speedKp[motorIndex] = SPEED_KP;
-    speedKi[motorIndex] = SPEED_KI;
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    wheelGainFwd[wheelIndex] = DEFAULT_WHEEL_GAIN_FWD[wheelIndex];
+    wheelGainBwd[wheelIndex] = DEFAULT_WHEEL_GAIN_BWD[wheelIndex];
+    wheelGainRight[wheelIndex] = DEFAULT_WHEEL_GAIN_RIGHT[wheelIndex];
+    wheelGainLeft[wheelIndex] = DEFAULT_WHEEL_GAIN_LEFT[wheelIndex];
   }
 
   Serial.print("Chassis ready: Kp=");
@@ -349,8 +350,7 @@ void chassisCtrlUpdate() {
     );
 
     const float outputCandidate =
-      speedKp[motorIndex] * error +
-      speedKi[motorIndex] * integralCandidate;
+      SPEED_KP * error + SPEED_KI * integralCandidate;
 
     const bool saturatedHigh =
       outputCandidate >= static_cast<float>(MAX_CURRENT_COMMAND);
@@ -367,37 +367,36 @@ void chassisCtrlUpdate() {
       allowIntegral ? integralCandidate : integralOld;
 
     const float output =
-      speedKp[motorIndex] * error + speedKi[motorIndex] * integralUsed;
+      SPEED_KP * error + SPEED_KI * integralUsed;
 
     const int16_t currentCommand = clampCurrentCommand(output);
 
-    const bool saturated =
-      currentCommand >= MAX_CURRENT_COMMAND ||
-      currentCommand <= -MAX_CURRENT_COMMAND;
-
     if (tuningActive) {
-      GainTuningAccumulator& stats = tuningStats[motorIndex];
-      const float absoluteError = fabsf(error);
-      ++stats.sampleCount;
-      stats.absoluteErrorSum += static_cast<double>(absoluteError);
-      stats.squaredErrorSum +=
-        static_cast<double>(error) * static_cast<double>(error);
-      stats.maximumAbsoluteError = max(
-        stats.maximumAbsoluteError,
-        absoluteError
-      );
-      stats.finalError = error;
-      if (saturated) {
-        ++stats.saturationCount;
+      for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+        if (WHEEL_TO_MOTOR[wheelIndex] != motorIndex) {
+          continue;
+        }
+        if (fabsf(rampedMotorRpm[motorIndex] - requestedMotorRpm[motorIndex]) <=
+            GAIN_TUNING_RAMP_TOLERANCE_RPM) {
+          GainTuningAccumulator& stats = tuningStats[wheelIndex];
+          const float absoluteRpm = fabsf(
+            static_cast<float>(canCommGetMotorRpm(motorIndex))
+          );
+          ++stats.sampleCount;
+          stats.absoluteRpmSum += static_cast<double>(absoluteRpm);
+          stats.absoluteRpmSquaredSum +=
+            static_cast<double>(absoluteRpm) * static_cast<double>(absoluteRpm);
+        }
+        break;
       }
 
       if (printTuningLog) {
         Serial.print("GAIN M");
         Serial.print(motorIndex + 1);
         Serial.print(" KP=");
-        Serial.print(speedKp[motorIndex], 3);
+        Serial.print(SPEED_KP, 3);
         Serial.print(" KI=");
-        Serial.print(speedKi[motorIndex], 3);
+        Serial.print(SPEED_KI, 3);
         Serial.print(" TARGET=");
         Serial.print(rampedMotorRpm[motorIndex], 0);
         Serial.print(" ACTUAL=");
@@ -405,13 +404,15 @@ void chassisCtrlUpdate() {
         Serial.print(" ERROR=");
         Serial.print(error, 0);
         Serial.print(" P=");
-        Serial.print(speedKp[motorIndex] * error, 0);
+        Serial.print(SPEED_KP * error, 0);
         Serial.print(" I=");
-        Serial.print(speedKi[motorIndex] * integralUsed, 0);
+        Serial.print(SPEED_KI * integralUsed, 0);
         Serial.print(" OUT=");
         Serial.print(output, 0);
         Serial.print(" SAT=");
-        Serial.println(saturated ? 1 : 0);
+        Serial.println(
+          fabsf(output) >= static_cast<float>(MAX_CURRENT_COMMAND) ? 1 : 0
+        );
       }
     }
 
@@ -468,13 +469,22 @@ void chassisCtrlChangePower(int delta) {
   Serial.println("%");
 }
 
-bool chassisCtrlSetSpeedGain(int motorIndex, float kp, float ki) {
-  if (motorIndex < 0 || motorIndex >= NUM_MOTORS) {
+bool chassisCtrlSetWheelGain(
+  ChassisGainDirection direction,
+  int wheelIndex,
+  float gain
+) {
+  if (wheelIndex < 0 || wheelIndex >= NUM_WHEELS ||
+      gain < 0.50f || gain > 1.50f) {
     return false;
   }
-
-  speedKp[motorIndex] = kp;
-  speedKi[motorIndex] = ki;
+  switch (direction) {
+    case ChassisGainDirection::FORWARD: wheelGainFwd[wheelIndex] = gain; break;
+    case ChassisGainDirection::BACKWARD: wheelGainBwd[wheelIndex] = gain; break;
+    case ChassisGainDirection::RIGHT: wheelGainRight[wheelIndex] = gain; break;
+    case ChassisGainDirection::LEFT: wheelGainLeft[wheelIndex] = gain; break;
+    default: return false;
+  }
   return true;
 }
 
@@ -504,12 +514,12 @@ bool chassisCtrlGainTuningResultReady() {
   return tuningResultReady;
 }
 
-ChassisGainTuningResult chassisCtrlGetGainTuningResult(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= NUM_MOTORS) {
+ChassisGainTuningResult chassisCtrlGetGainTuningResult(int wheelIndex) {
+  if (wheelIndex < 0 || wheelIndex >= NUM_WHEELS) {
     return {};
   }
 
-  return tuningResults[motorIndex];
+  return tuningResults[wheelIndex];
 }
 
 void chassisCtrlClearGainTuningResultReady() {
