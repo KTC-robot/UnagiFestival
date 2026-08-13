@@ -215,15 +215,15 @@ void readOneSensor(int index) {
   if (measurement.RangeStatus == 0) {
     storeSensorReading(index, measurement.RangeMilliMeter);
 
-    Serial.print("VL53L0X 距離: ");
-    Serial.print(LASER_SENSOR_NAMES[index]);
-    Serial.print(" CH=");
-    Serial.print(LASER_SENSOR_CHANNELS[index]);
-    Serial.print(" raw=");
-    Serial.print(measurement.RangeMilliMeter);
-    Serial.print(" mm filtered=");
-    Serial.print(sensorDistanceMm(index));
-    Serial.println(" mm");
+    // Serial.print("VL53L0X 距離: ");
+    // Serial.print(LASER_SENSOR_NAMES[index]);
+    // Serial.print(" CH=");
+    // Serial.print(LASER_SENSOR_CHANNELS[index]);
+    // Serial.print(" raw=");
+    // Serial.print(measurement.RangeMilliMeter);
+    // Serial.print(" mm filtered=");
+    // Serial.print(sensorDistanceMm(index));
+    // Serial.println(" mm");
     return;
   }
 

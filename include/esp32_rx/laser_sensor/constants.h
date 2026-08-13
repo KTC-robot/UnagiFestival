@@ -82,6 +82,6 @@ constexpr int LASER_SENSOR_MAX_VALID_MM = 2000;
 // 距離フィルタ
 // ========================================
 
-// new = 1/4, old = 3/4
-constexpr int LASER_SENSOR_FILTER_NEW_WEIGHT_NUMERATOR = 1;
+// new = 3/4, old = 1/4
+constexpr int LASER_SENSOR_FILTER_NEW_WEIGHT_NUMERATOR = 3;
 constexpr int LASER_SENSOR_FILTER_WEIGHT_DENOMINATOR = 4;
