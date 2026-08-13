@@ -24,6 +24,17 @@ int tuningTxIndex = -1;
 bool tuningTxWaitingForResponse = false;
 uint32_t tuningTxStartedMs = 0;
 
+/**
+ * @brief wheel gain調整結果の逐次送信状態を初期状態へ戻す。
+ *
+ * STOPや新規試験を跨いで旧試験のWG/WDを送らないために使用する。
+ */
+void resetGainTuningTxState() {
+  tuningTxIndex = -1;
+  tuningTxWaitingForResponse = false;
+  tuningTxStartedMs = 0;
+}
+
 uint16_t parseUint16(const String& hex, int offset) {
   return static_cast<uint16_t>(
     (static_cast<uint16_t>(
@@ -198,12 +209,14 @@ void handleControlPacket(const String& hex) {
 
   switch (command) {
     case ControlCommand::STOP:
+      resetGainTuningTxState();
       chassisCtrlStop();
       im920CommSendText("CTRL STOP");
       break;
 
     case ControlCommand::EMERGENCY_STOP:
       Serial.println("EMERGENCY STOP");
+      resetGainTuningTxState();
       chassisCtrlStop();
       im920CommSendText("CTRL ESTOP");
       break;
@@ -305,6 +318,8 @@ void handleControlPacket(const String& hex) {
         return;
       }
 
+      // 新しい試験では、前回結果の送信途中stateを必ず破棄する。
+      resetGainTuningTxState();
       chassisCtrlStartGainTuning(
         vx,
         vy,
@@ -341,7 +356,7 @@ void sendGainTuningResultsIfReady() {
     if (millis() - tuningTxStartedMs <= GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) {
       return;
     }
-    // No local-module response: retry this frame instead of silently advancing.
+    // ローカルIM920から応答がない場合はindexを進めず、同じ結果を再送する。
     tuningTxWaitingForResponse = false;
   }
 
@@ -361,7 +376,7 @@ void sendGainTuningResultsIfReady() {
   } else if (tuningTxIndex == GAIN_TUNING_WHEEL_COUNT) {
     message = "WD";
   } else {
-    tuningTxIndex = -1;
+    resetGainTuningTxState();
     chassisCtrlClearGainTuningResultReady();
     return;
   }
@@ -418,6 +433,8 @@ void handleIm920Line(const String& rawLine) {
   }
 
   if (line == "OK") {
+    // TXDA後のOKはローカルIM920の送信処理完了を示す応答であり、
+    // Raspberry Pi側まで届いたことを保証するdelivery ACKではない。
     if (tuningTxWaitingForResponse) {
       tuningTxWaitingForResponse = false;
       ++tuningTxIndex;
@@ -516,6 +533,7 @@ void im920CommCheckTimeout() {
 
   if (chassisCtrlIsActive()) {
     Serial.println("COMM TIMEOUT -> STOP");
+    resetGainTuningTxState();
     chassisCtrlStop();
   }
 
@@ -523,6 +541,7 @@ void im920CommCheckTimeout() {
 }
 
 void im920CommSendPeriodicStatus() {
+  // tuning結果送信中は通常statusを止め、IM920へのTXDA競合を避ける。
   if (!ENABLE_REPLY_TO_PI || tuningTxIndex >= 0) {
     return;
   }

@@ -31,6 +31,7 @@ GainTuningAccumulator tuningStats[NUM_MOTORS] = {};
 ChassisGainTuningResult tuningResults[NUM_MOTORS] = {};
 bool tuningActive = false;
 bool tuningResultReady = false;
+bool tuningSamplingStarted = false;
 uint32_t tuningStartedMs = 0;
 uint32_t tuningDurationMs = 0;
 uint32_t lastTuningLogMs = 0;
@@ -43,6 +44,22 @@ void clearTuningStats() {
     tuningStats[wheelIndex] = {};
     tuningResults[wheelIndex] = {};
   }
+}
+
+/**
+ * @brief 4輪すべての目標RPMランプが要求値へ収束したか確認する。
+ *
+ * @return true 全車輪が許容差以内の場合。
+ */
+bool allTuningTargetsSettled() {
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+    if (fabsf(rampedMotorRpm[motorIndex] - requestedMotorRpm[motorIndex]) >
+        GAIN_TUNING_RAMP_TOLERANCE_RPM) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void finishGainTuning() {
@@ -194,6 +211,10 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
   if (fabsf(vy) < CHASSIS_DEADZONE) vy = 0.0f;
   if (fabsf(wz) < CHASSIS_DEADZONE) wz = 0.0f;
 
+  // gainの方向はユーザー指令基準で判定する。VX_INVERTは車体座標系の
+  // 補正なので、forward/backwardのgain選択には反転前のvxを使用する。
+  const float gainDirectionVx = vx;
+
   if (VX_INVERT) vx = -vx;
   if (WZ_INVERT) wz = -wz;
 
@@ -211,9 +232,9 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     float strafe = static_cast<float>(STR_SIGN[wheelIndex]) * vy;
     const float yaw = static_cast<float>(YAW_SIGN[wheelIndex]) * wz;
 
-    if (vx > 0.0f) {
+    if (gainDirectionVx > 0.0f) {
       forward *= wheelGainFwd[wheelIndex];
-    } else if (vx < 0.0f) {
+    } else if (gainDirectionVx < 0.0f) {
       forward *= wheelGainBwd[wheelIndex];
     }
 
@@ -317,6 +338,12 @@ void chassisCtrlUpdate() {
     tuningActive && ENABLE_GAIN_TUNING_LOG &&
     nowMs - lastTuningLogMs >= GAIN_TUNING_LOG_INTERVAL_MS;
 
+  // 4輪すべてのtarget rampが収束した次の制御周期から同時に集計する。
+  // wheelごとに開始時刻がずれると、RPM比較の測定区間が揃わないため。
+  if (tuningActive && !tuningSamplingStarted && allTuningTargetsSettled()) {
+    tuningSamplingStarted = true;
+  }
+
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
     rampedMotorRpm[motorIndex] = moveToward(
       rampedMotorRpm[motorIndex],
@@ -371,22 +398,19 @@ void chassisCtrlUpdate() {
 
     const int16_t currentCommand = clampCurrentCommand(output);
 
-    if (tuningActive) {
+    if (tuningActive && tuningSamplingStarted) {
       for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
         if (WHEEL_TO_MOTOR[wheelIndex] != motorIndex) {
           continue;
         }
-        if (fabsf(rampedMotorRpm[motorIndex] - requestedMotorRpm[motorIndex]) <=
-            GAIN_TUNING_RAMP_TOLERANCE_RPM) {
-          GainTuningAccumulator& stats = tuningStats[wheelIndex];
-          const float absoluteRpm = fabsf(
-            static_cast<float>(canCommGetMotorRpm(motorIndex))
-          );
-          ++stats.sampleCount;
-          stats.absoluteRpmSum += static_cast<double>(absoluteRpm);
-          stats.absoluteRpmSquaredSum +=
-            static_cast<double>(absoluteRpm) * static_cast<double>(absoluteRpm);
-        }
+        GainTuningAccumulator& stats = tuningStats[wheelIndex];
+        const float absoluteRpm = fabsf(
+          static_cast<float>(canCommGetMotorRpm(motorIndex))
+        );
+        ++stats.sampleCount;
+        stats.absoluteRpmSum += static_cast<double>(absoluteRpm);
+        stats.absoluteRpmSquaredSum +=
+          static_cast<double>(absoluteRpm) * static_cast<double>(absoluteRpm);
         break;
       }
 
@@ -444,6 +468,7 @@ void chassisCtrlSetDriveCommand(
 void chassisCtrlStop() {
   tuningActive = false;
   tuningResultReady = false;
+  tuningSamplingStarted = false;
   longitudinalCommand = 0.0f;
 
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
@@ -500,6 +525,7 @@ void chassisCtrlStartGainTuning(
 
   clearTuningStats();
   tuningResultReady = false;
+  tuningSamplingStarted = false;
   tuningDurationMs = min(durationMs, GAIN_TUNING_MAX_DURATION_MS);
   tuningStartedMs = millis();
   lastTuningLogMs = tuningStartedMs;
