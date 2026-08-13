@@ -20,6 +20,12 @@ float wheelGainFwd[NUM_WHEELS] = {};
 float wheelGainBwd[NUM_WHEELS] = {};
 float wheelGainRight[NUM_WHEELS] = {};
 float wheelGainLeft[NUM_WHEELS] = {};
+float driveScaleForward = 1.0f;
+float driveScaleBackward = 1.0f;
+float driveScaleOther = 1.0f;
+int8_t lastDriveVx = 0;
+int8_t lastDriveVy = 0;
+int8_t lastDriveWz = 0;
 
 struct GainTuningAccumulator {
   uint32_t sampleCount;
@@ -213,7 +219,7 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 
   // gainの方向はユーザー指令基準で判定する。VX_INVERTは車体座標系の
   // 補正なので、forward/backwardのgain選択には反転前のvxを使用する。
-  const float gainDirectionVx = vx;
+  const float commandDirectionVx = vx;
 
   if (VX_INVERT) vx = -vx;
   if (WZ_INVERT) wz = -wz;
@@ -232,9 +238,9 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     float strafe = static_cast<float>(STR_SIGN[wheelIndex]) * vy;
     const float yaw = static_cast<float>(YAW_SIGN[wheelIndex]) * wz;
 
-    if (gainDirectionVx > 0.0f) {
+    if (commandDirectionVx > 0.0f) {
       forward *= wheelGainFwd[wheelIndex];
-    } else if (gainDirectionVx < 0.0f) {
+    } else if (commandDirectionVx < 0.0f) {
       forward *= wheelGainBwd[wheelIndex];
     }
 
@@ -259,9 +265,22 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     }
   }
 
+  float selectedDriveScale = driveScaleOther;
+  if (commandDirectionVx > 0.0f) {
+    selectedDriveScale = driveScaleForward;
+  } else if (commandDirectionVx < 0.0f) {
+    selectedDriveScale = driveScaleBackward;
+  }
+
+  // gain tuningではstep assist状態に依存しない同一条件でRPMを比較する。
+  if (tuningActive) {
+    selectedDriveScale = 1.0f;
+  }
+
   const float maxRpm =
     static_cast<float>(CHASSIS_MAX_RPM) *
-    (static_cast<float>(drivePowerPercent) / 100.0f);
+    (static_cast<float>(drivePowerPercent) / 100.0f) *
+    selectedDriveScale;
 
   bool anyWheelActive = false;
 
@@ -458,6 +477,10 @@ void chassisCtrlSetDriveCommand(
   int8_t vy,
   int8_t wz
 ) {
+  // phase変更時に次のPi packetを待たず再計算できるよう、生の指令を保持する。
+  lastDriveVx = vx;
+  lastDriveVy = vy;
+  lastDriveWz = wz;
   setChassisSpringLogic(
     utilCommandToFloat(vx),
     utilCommandToFloat(vy),
@@ -465,11 +488,34 @@ void chassisCtrlSetDriveCommand(
   );
 }
 
+void chassisCtrlSetDriveScale(
+  float forwardScale,
+  float backwardScale,
+  float otherScale
+) {
+  driveScaleForward = constrain(forwardScale, 0.0f, 1.0f);
+  driveScaleBackward = constrain(backwardScale, 0.0f, 1.0f);
+  driveScaleOther = constrain(otherScale, 0.0f, 1.0f);
+
+  // tuning中は測定条件を1.0に固定する。通常走行中だけ現在の指令へ即時反映する。
+  // STOPでlast commandとmotorsActiveを消すため、停止後のphase変更では再始動しない。
+  if (!tuningActive && motorsActive) {
+    setChassisSpringLogic(
+      utilCommandToFloat(lastDriveVx),
+      utilCommandToFloat(lastDriveVy),
+      utilCommandToFloat(lastDriveWz)
+    );
+  }
+}
+
 void chassisCtrlStop() {
   tuningActive = false;
   tuningResultReady = false;
   tuningSamplingStarted = false;
   longitudinalCommand = 0.0f;
+  lastDriveVx = 0;
+  lastDriveVy = 0;
+  lastDriveWz = 0;
 
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
     requestedMotorRpm[motorIndex] = 0.0f;
@@ -529,8 +575,9 @@ void chassisCtrlStartGainTuning(
   tuningDurationMs = min(durationMs, GAIN_TUNING_MAX_DURATION_MS);
   tuningStartedMs = millis();
   lastTuningLogMs = tuningStartedMs;
-  chassisCtrlSetDriveCommand(vx, vy, wz);
+  // drive command生成時からstep assist scaleを無効化するため、先に有効化する。
   tuningActive = true;
+  chassisCtrlSetDriveCommand(vx, vy, wz);
 
   Serial.print("GAIN TUNING START duration_ms=");
   Serial.println(tuningDurationMs);

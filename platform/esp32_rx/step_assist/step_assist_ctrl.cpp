@@ -1,5 +1,6 @@
 #include "step_assist/step_assist_ctrl.hpp"
 
+#include "chassis_ctrl/chassis_ctrl.h"
 #include "laser_sensor/constants.h"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
@@ -121,6 +122,56 @@ void applyPhaseOutputs(StepAssistPhase phase)
   }
 }
 
+/**
+ * @brief 段差走破phaseに対応する車体全体の速度係数を適用する。
+ *
+ * 4輪間の差を補正するwheel gainとは分離し、phase遷移時の最大RPMだけを制限する。
+ */
+void applyPhaseDriveScale(StepAssistPhase phase)
+{
+  float forwardScale = STEP_ASSIST_NORMAL_FORWARD_SCALE;
+  float backwardScale = STEP_ASSIST_NORMAL_BACKWARD_SCALE;
+  float otherScale = STEP_ASSIST_NORMAL_OTHER_SCALE;
+
+  switch (phase)
+  {
+  case StepAssistPhase::NORMAL:
+    break;
+
+  case StepAssistPhase::FRONT_LOWERED:
+    forwardScale = STEP_ASSIST_FRONT_LOWERED_FORWARD_SCALE;
+    backwardScale = STEP_ASSIST_FRONT_LOWERED_BACKWARD_SCALE;
+    otherScale = STEP_ASSIST_FRONT_LOWERED_OTHER_SCALE;
+    break;
+
+  case StepAssistPhase::BOTH_LOWERED:
+    forwardScale = STEP_ASSIST_BOTH_LOWERED_FORWARD_SCALE;
+    backwardScale = STEP_ASSIST_BOTH_LOWERED_BACKWARD_SCALE;
+    otherScale = STEP_ASSIST_BOTH_LOWERED_OTHER_SCALE;
+    break;
+
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    forwardScale = STEP_ASSIST_REAR_SENSOR_LOWER_FORWARD_SCALE;
+    backwardScale = STEP_ASSIST_REAR_SENSOR_LOWER_BACKWARD_SCALE;
+    otherScale = STEP_ASSIST_REAR_SENSOR_LOWER_OTHER_SCALE;
+    break;
+
+  case StepAssistPhase::REAR_RAISED:
+    forwardScale = STEP_ASSIST_REAR_RAISED_FORWARD_SCALE;
+    backwardScale = STEP_ASSIST_REAR_RAISED_BACKWARD_SCALE;
+    otherScale = STEP_ASSIST_REAR_RAISED_OTHER_SCALE;
+    break;
+  }
+
+  chassisCtrlSetDriveScale(forwardScale, backwardScale, otherScale);
+  Serial.print("[STEP][SCALE] FWD=");
+  Serial.print(forwardScale, 2);
+  Serial.print(" BWD=");
+  Serial.print(backwardScale, 2);
+  Serial.print(" OTHER=");
+  Serial.println(otherScale, 2);
+}
+
 void transitionTo(StepAssistPhase nextPhase)
 {
   const uint32_t now = millis();
@@ -143,6 +194,7 @@ void transitionTo(StepAssistPhase nextPhase)
   phaseEnteredMs = now;
 
   applyPhaseOutputs(currentPhase);
+  applyPhaseDriveScale(currentPhase);
 }
 
 } // namespace
@@ -155,6 +207,7 @@ bool stepAssistCtrlBegin()
   lastDebugLogMs = 0;
 
   applyPhaseOutputs(currentPhase);
+  applyPhaseDriveScale(currentPhase);
 
   Serial.println(
       "段差制御 初期化完了: 前補助輪=UP 後補助輪=UP");
