@@ -18,6 +18,8 @@ from unagifestival.tools.ps_controller.config import (
     SLAVE_ADR,
     STICK_DEADZONE,
     STICK_SEND_MAX,
+    STEPPER_DOWN_BUTTON,
+    STEPPER_UP_BUTTON,
     TX_LED_PULSE_SEC,
 )
 from unagifestival.tools.ps_controller.enums import (
@@ -34,6 +36,7 @@ from unagifestival.tools.ps_controller.models import (
     ServoAction,
     ServoSetCommand,
     ServoToggleKey,
+    StepperCommand,
 )
 from unagifestival.tools.ps_controller.robot_api import RobotApi
 from unagifestival.tools.ps_controller.transport import Im920Transport
@@ -64,6 +67,9 @@ class RobotHandler:
         )
         self.robot = RobotApi(self.transport)
         self.servo_toggle_state: dict[ServoToggleKey, bool] = {}
+        self.stepper_up_pressed = False
+        self.stepper_down_pressed = False
+        self.stepper_command = StepperCommand.STOP
 
         self._validate_servo_config()
 
@@ -77,6 +83,11 @@ class RobotHandler:
 
     def exit(self) -> None:
         logger.info("[ROBOT] 制御終了")
+
+        try:
+            self.robot.stepper(StepperCommand.STOP)
+        except Exception:  # noqa: BLE001
+            logger.warning("[STEPPER] STOP on exit failed", exc_info=True)
 
         try:
             GPIO.output(LED_PIN, GPIO.LOW)
@@ -218,6 +229,8 @@ class RobotHandler:
             ButtonCode.L1_BTN,
             ButtonCode.R1_BTN,
             ButtonCode.PS_BTN,
+            STEPPER_UP_BUTTON,
+            STEPPER_DOWN_BUTTON,
         }
 
         for button, actions in SERVO_BUTTON_ACTIONS.items():
@@ -356,6 +369,34 @@ class RobotHandler:
         return ServoSetCommand(action.channel, action.angle)
 
     # ============================================================
+    # Stepper control
+    # ============================================================
+
+    def _desired_stepper_command(self) -> StepperCommand:
+        if self.stepper_up_pressed and not self.stepper_down_pressed:
+            return StepperCommand.UP
+        if self.stepper_down_pressed and not self.stepper_up_pressed:
+            return StepperCommand.DOWN
+        return StepperCommand.STOP
+
+    def _send_stepper(self, command: StepperCommand) -> None:
+        logger.info("[STEPPER] SEND %s", command.name)
+        self.robot.stepper(command)
+
+    def _handle_stepper_button(self, event: ButtonEvent) -> None:
+        if event.code is STEPPER_UP_BUTTON:
+            self.stepper_up_pressed = event.state is ButtonState.PRESSED
+        elif event.code is STEPPER_DOWN_BUTTON:
+            self.stepper_down_pressed = event.state is ButtonState.PRESSED
+        else:
+            return
+
+        desired = self._desired_stepper_command()
+        if desired is not self.stepper_command:
+            self.stepper_command = desired
+            self._send_stepper(desired)
+
+    # ============================================================
     # Input to robot action
     # ============================================================
 
@@ -401,8 +442,14 @@ class RobotHandler:
             return
 
         if event.code is ButtonCode.CROSS_BTN:
+            self.stepper_up_pressed = False
+            self.stepper_down_pressed = False
+            self.stepper_command = StepperCommand.STOP
             self.robot.stop()
         elif event.code is ButtonCode.PS_BTN:
+            self.stepper_up_pressed = False
+            self.stepper_down_pressed = False
+            self.stepper_command = StepperCommand.STOP
             self.robot.emergency_stop()
         elif event.code is ButtonCode.L1_BTN:
             self.robot.change_power(-DRIVE_POWER_STEP)
@@ -431,6 +478,7 @@ class RobotHandler:
             event.code.display_name,
             event.state.name,
         )
+        self._handle_stepper_button(event)
         self._handle_button_event(event)
         self._handle_servo_button(event)
 

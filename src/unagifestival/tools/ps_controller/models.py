@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import IntEnum
 
 from unagifestival.tools.ps_controller.enums import AxisCode, ButtonCode
 
@@ -39,6 +40,14 @@ class ServoSetCommand:
 
     channel: int
     angle: int
+
+
+class StepperCommand(IntEnum):
+    """2台のステッピングモーターに対する動作指令."""
+
+    STOP = 0
+    UP = 1
+    DOWN = 2
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@
 #include "relay/relay_ctrl.hpp"
 #include "servo_ctrl/servo_ctrl.h"
 #include "step_assist/step_assist_ctrl.hpp"
+#include "stepper_ctrl/stepper_ctrl.hpp"
 
 void setup() {
   Serial.begin(115200);
@@ -29,6 +30,10 @@ void setup() {
 
   servoCtrlBegin();
   chassisCtrlBegin();
+
+  if (!stepperCtrlBegin()) {
+    Serial.println("WARNING: stepper controller initialization failed.");
+  }
   im920CommBegin();
   chassisCtrlStop();
 
@@ -46,11 +51,14 @@ void setup() {
 void loop() {
   im920CommUpdate();
 
+  // TB6600 x2へ共通GPIO25(PUL)でSTEPパルスを生成。
+  // UP/DOWN開始命令を1回受けた後、STOPまで2台を同期して回し続ける。
+  stepperCtrlUpdate();
+
   canCommReadFrames();
   chassisCtrlUpdate();
   canCommSendPeriodically();
 
   im920CommCheckTimeout();
-  im920CommSendPeriodicStatus();
-  stepAssistCtrlUpdate();
+  // stepAssistCtrlUpdate();
 }

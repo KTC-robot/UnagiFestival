@@ -32,6 +32,12 @@ LED_PIN: Final[int] = 24
 DRIVE_HZ: Final[float] = 5.0
 DRIVE_POWER_STEP: Final[int] = 5
 
+# ステッピングモーター操作
+# SHARE=UP、TOUCHPAD=DOWN。
+# ボタン状態が変化した瞬間だけ1回送信する（周期再送なし）。
+STEPPER_UP_BUTTON: Final[ButtonCode] = ButtonCode.SHARE_BTN
+STEPPER_DOWN_BUTTON: Final[ButtonCode] = ButtonCode.TOUCHPAD_BTN
+
 # IM920-HATのI2Cコマンド長制限
 IM920_CMD_MAX_LEN: Final[int] = 32
 

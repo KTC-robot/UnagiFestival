@@ -18,18 +18,11 @@ void im920CommBegin();
 void im920CommUpdate();
 
 /**
- * @brief 無線パケットの受信タイムアウトを確認し、必要なら足回りを停止する。
+ * @brief 無線パケットの受信タイムアウトを確認し、必要なら駆動系を停止する。
  *
- * タイムアウト時点で足回りが動作中の場合だけ停止処理を実行する。
+ * タイムアウト時点で足回りやステッパーが動作中の場合だけ停止処理を実行する。
  */
 void im920CommCheckTimeout();
-
-/**
- * @brief 足回り、出力率、CAN状態を含むステータスを所定周期で送信する。
- *
- * 返信機能が無効な場合、または送信周期に達していない場合は送信しない。
- */
-void im920CommSendPeriodicStatus();
 
 /**
  * @brief ASCII文字列を16進文字列へ変換し、IM920のTXDAコマンドで送信する。
@@ -39,4 +32,3 @@ void im920CommSendPeriodicStatus();
  * @param text 送信するASCII文字列。
  */
 void im920CommSendText(const String& text);
-
