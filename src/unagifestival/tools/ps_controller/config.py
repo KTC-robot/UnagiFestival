@@ -81,12 +81,11 @@ SERVO_SEND_HOME_ON_START: Final[bool] = False
 # ============================================================
 # ボタンを押すと指定角度へ動かす
 # ============================================================
-# CROSS、L1、R1、PSは足回りで使用するため、
+# CROSS、CIRCLE、L1、R1、PSは足回りで使用するため、
 # サーボへ割り当てない。
 SERVO_BUTTON_ACTIONS: Final[ServoActionMap] = {
     ButtonCode.SQUARE_BTN: (ServoAction(channel=2, angle=60),),
     ButtonCode.TRIANGLE_BTN: (ServoAction(channel=2, angle=120),),
-    ButtonCode.CIRCLE_BTN: (ServoAction(channel=1, angle=90),),
     ButtonCode.OPTIONS_BTN: (ServoAction(channel=1, angle=0),),
 }
 

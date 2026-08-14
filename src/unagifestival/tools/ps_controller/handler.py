@@ -453,6 +453,9 @@ class RobotHandler:
             self.robot.change_power(-DRIVE_POWER_STEP)
         elif event.code is ButtonCode.R1_BTN:
             self.robot.change_power(DRIVE_POWER_STEP)
+        elif event.code is ButtonCode.CIRCLE_BTN:
+            # Circleは走行停止を伴わない段差制御リセット専用ボタンとする。
+            self.robot.reset_step_assist()
 
     # ============================================================
     # Event handlers

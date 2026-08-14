@@ -201,6 +201,16 @@ void transitionTo(StepAssistPhase nextPhase)
 
 bool stepAssistCtrlBegin()
 {
+  stepAssistCtrlReset();
+
+  Serial.println(
+      "段差制御 初期化完了: 前補助輪=UP 後補助輪=UP");
+
+  return true;
+}
+
+void stepAssistCtrlReset()
+{
   currentPhase = StepAssistPhase::NORMAL;
 
   phaseEnteredMs = millis();
@@ -208,11 +218,6 @@ bool stepAssistCtrlBegin()
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
-
-  Serial.println(
-      "段差制御 初期化完了: 前補助輪=UP 後補助輪=UP");
-
-  return true;
 }
 
 void stepAssistCtrlUpdate()
