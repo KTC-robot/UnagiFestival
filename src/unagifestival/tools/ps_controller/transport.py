@@ -22,6 +22,7 @@ class ControlCommand(IntEnum):
     GAIN_TUNE_START = 0x06
     GAIN_TUNE_KEEPALIVE = 0x07
     GAIN_TUNE_RESULT_ACK = 0x08
+    STEP_ASSIST_RESET = 0x09
 
 
 GAIN_WIRE_SCALE = 1000
@@ -171,6 +172,10 @@ class Im920Transport:
             ControlCommand.GAIN_TUNE_RESULT_ACK,
             self._byte_to_hex(result_index),
         )
+
+    def send_step_assist_reset(self) -> None:
+        """ESP32の段差制御状態をNORMALへ戻す."""
+        self._send_control(ControlCommand.STEP_ASSIST_RESET)
 
     def send_servo_set(self, command: ServoSetCommand) -> None:
         payload = self._byte_to_hex(PacketType.SERVO_SET)

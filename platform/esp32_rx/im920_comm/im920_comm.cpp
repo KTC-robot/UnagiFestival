@@ -3,6 +3,7 @@
 #include "can_comm/can_comm.h"
 #include "chassis_ctrl/chassis_ctrl.h"
 #include "servo_ctrl/servo_ctrl.h"
+#include "step_assist/step_assist_ctrl.hpp"
 #include "util/util.h"
 #include "im920_comm/constants.h"
 
@@ -402,6 +403,12 @@ void handleControlPacket(const String& hex) {
         millis() + GAIN_TUNING_RESULT_TURNAROUND_GUARD_MS;
       break;
     }
+
+    case ControlCommand::STEP_ASSIST_RESET:
+      // Circle操作では車体を停止せず、段差制御の状態と出力だけを初期化する。
+      stepAssistCtrlReset();
+      im920CommSendText("STEP RESET");
+      break;
 
     default:
       Serial.println("CONTROL unknown command");

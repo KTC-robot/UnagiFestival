@@ -37,7 +37,9 @@ enum class ControlCommand : uint8_t {
   GAIN_TUNE_START = 0x06,
   GAIN_TUNE_KEEPALIVE = 0x07,
   // payload 0..3はWG0..WG3、4はWDをPiが受信したことを示す。
-  GAIN_TUNE_RESULT_ACK = 0x08
+  GAIN_TUNE_RESULT_ACK = 0x08,
+  // payloadなしで段差制御状態をNORMALへ戻す。
+  STEP_ASSIST_RESET = 0x09
 };
 
 constexpr float GAIN_WIRE_SCALE = 1000.0f;

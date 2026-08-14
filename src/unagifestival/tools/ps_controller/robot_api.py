@@ -29,6 +29,8 @@ class RobotTransport(Protocol):
 
     def send_gain_tune_result_ack(self, result_index: int) -> None: ...
 
+    def send_step_assist_reset(self) -> None: ...
+
     def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
 
@@ -69,6 +71,10 @@ class RobotApi:
         0-3はWG0-WG3、4はWDを表す。duplicate結果にも毎回送信する.
         """
         self._transport.send_gain_tune_result_ack(result_index)
+
+    def reset_step_assist(self) -> None:
+        """ESP32の段差制御状態をNORMALへリセットする."""
+        self._transport.send_step_assist_reset()
 
     def set_servo(self, command: ServoSetCommand) -> None:
         self._transport.send_servo_set(command)

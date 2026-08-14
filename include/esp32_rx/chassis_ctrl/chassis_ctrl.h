@@ -54,6 +54,22 @@ void chassisCtrlSetDriveCommand(
 );
 
 /**
+ * @brief 外部制御状態に応じた走行速度係数を設定する。
+ *
+ * wheel gainは4輪間の個体差補正、本APIのscaleは車体全体の最大RPM制限として
+ * 独立して適用する。走行中は最後の指令を安全に再計算して即時反映する。
+ *
+ * @param forwardScale 前進時の速度係数。0.0〜1.0。
+ * @param backwardScale 後退時の速度係数。0.0〜1.0。
+ * @param otherScale 横移動・旋回時の速度係数。0.0〜1.0。
+ */
+void chassisCtrlSetDriveScale(
+  float forwardScale,
+  float backwardScale,
+  float otherScale
+);
+
+/**
  * @brief 足回りを停止し、全モーターへゼロ電流指令を即時送信する。
  *
  * 目標回転数、ランプ後回転数、PI積分値、動作中状態もリセットする。
