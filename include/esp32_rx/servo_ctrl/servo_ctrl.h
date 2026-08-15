@@ -36,3 +36,13 @@ bool servoCtrlRestoreAfterI2cRecovery();
  * @param hex 解析対象の16進文字列。
  */
 void servoCtrlHandlePacket(const String& hex);
+
+/**
+ * @brief 全論理サーボ角度設定パケットを解析して一括出力する。
+ *
+ * packet形式は種別1バイトと角度1バイトを表す16進文字列（54AA）。
+ * 短いpacketまたは180度を超える角度は出力しない。
+ *
+ * @param hex 解析対象の16進文字列。
+ */
+void servoCtrlHandleAllPacket(const String& hex);

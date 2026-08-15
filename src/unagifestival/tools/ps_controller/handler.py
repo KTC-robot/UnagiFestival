@@ -362,9 +362,8 @@ class RobotHandler:
 
     def _send_all_servos(self, angle: int) -> None:
         """有効な全サーボを同じ角度へ動かす."""
-        for channel, config in enumerate(SERVO_CHANNELS):
-            if config.enabled:
-                self._send_servo(ServoSetCommand(channel=channel, angle=angle))
+        logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", angle)
+        self.robot.set_all_servos(angle)
 
     def _handle_servo_button(self, event: ButtonEvent) -> None:
         """設定されたボタン操作をサーボ命令へ変換する."""
@@ -430,14 +429,6 @@ class RobotHandler:
             vy = int(vy * SLOW_MODE_MULTIPLIER)
             wz = int(wz * SLOW_MODE_MULTIPLIER)
 
-        logger.info(
-            "[ROBOT] DRIVE -> VX=%d VY=%d WZ=%d SLOW=%s",
-            vx,
-            vy,
-            wz,
-            slow_mode,
-        )
-
         return DriveCommand(vx=vx, vy=vy, wz=wz)
 
     def _handle_button_event(self, event: ButtonEvent) -> None:
@@ -469,10 +460,31 @@ class RobotHandler:
         state.axis_values[event.code] = event.value
 
         if event.code is AxisCode.DPAD_Y:
+            logger.info(
+                "[SERVO][DPAD] DPAD_Y value=%d",
+                event.value,
+            )
+
             if event.value == -1:
+                logger.info(
+                    "[SERVO][DPAD] UP -> CH0-6 ANGLE=%d",
+                    SERVO_ALL_OPEN_ANGLE,
+                )
                 self._send_all_servos(SERVO_ALL_OPEN_ANGLE)
+
             elif event.value == 1:
+                logger.info(
+                    "[SERVO][DPAD] DOWN -> CH0-6 ANGLE=%d",
+                    SERVO_ALL_CLOSE_ANGLE,
+                )
                 self._send_all_servos(SERVO_ALL_CLOSE_ANGLE)
+
+            else:
+                logger.info(
+                    "[SERVO][DPAD] RELEASE value=%d",
+                    event.value,
+                )
+
             return
 
     def handle_button(self, event: ButtonEvent) -> None:

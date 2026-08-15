@@ -41,6 +41,8 @@ INVALID_DIRECTION_MESSAGE = "direction must be between 0 and 3"
 INVALID_GAIN_MESSAGE = "gain must be between 0.50 and 1.50"
 INVALID_TUNING_DURATION_MESSAGE = "duration_ms must be 100..10000 in 100 ms units"
 INVALID_RESULT_ACK_MESSAGE = "result_index must be between 0 and 4"
+INVALID_SERVO_ANGLE_MESSAGE = "angle must be between 0 and 180"
+SERVO_ANGLE_MAX = 180
 
 
 class Im920Device(Protocol):
@@ -58,6 +60,7 @@ class PacketType(IntEnum):
 
     CONTROL = 0x43
     SERVO_SET = 0x53
+    SERVO_SET_ALL = 0x54
 
 
 class Im920Transport:
@@ -181,7 +184,37 @@ class Im920Transport:
         payload = self._byte_to_hex(PacketType.SERVO_SET)
         payload += self._byte_to_hex(command.channel)
         payload += self._byte_to_hex(command.angle)
+
+        self._logger.info(
+            "[SERVO][TX] CH=%d ANGLE=%d PAYLOAD=%s COMMAND=TXDA %s",
+            command.channel,
+            command.angle,
+            payload,
+            payload,
+        )
+
         self._send_payload(payload, "SERVO_SET")
+
+    def send_servo_set_all(self, angle: int) -> None:
+        """全論理サーボへ同じ角度を設定するpacketを送信する.
+
+        Args:
+            angle: 設定角度。0〜180度.
+
+        Raises:
+            ValueError: angleが0〜180度の範囲外の場合.
+        """
+        if not 0 <= angle <= SERVO_ANGLE_MAX:
+            raise ValueError(INVALID_SERVO_ANGLE_MESSAGE)
+
+        payload = self._byte_to_hex(PacketType.SERVO_SET_ALL)
+        payload += self._byte_to_hex(angle)
+        self._logger.info(
+            "[SERVO][TX ALL] ANGLE=%d PAYLOAD=%s",
+            angle,
+            payload,
+        )
+        self._send_payload(payload, "SERVO_SET_ALL")
 
     def read(self) -> str:
         if self._pending_reads:
