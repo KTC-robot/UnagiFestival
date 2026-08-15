@@ -10,6 +10,8 @@ from unagifestival.tools.ps_controller.config import (
     DRIVE_POWER_STEP,
     IM920_CMD_MAX_LEN,
     LED_PIN,
+    SERVO_ALL_CLOSE_ANGLE,
+    SERVO_ALL_OPEN_ANGLE,
     SERVO_BUTTON_ACTIONS,
     SERVO_CHANNEL_COUNT,
     SERVO_CHANNELS,
@@ -185,7 +187,7 @@ class RobotHandler:
 
     @staticmethod
     def _validate_servo_config() -> None:
-        """16チャネル分の設定とボタン操作を起動時に検証する."""
+        """使用する7チャネル分の設定とボタン操作を起動時に検証する."""
         if len(SERVO_CHANNELS) != SERVO_CHANNEL_COUNT:
             message = (
                 f"SERVO_CHANNELS must contain {SERVO_CHANNEL_COUNT} values, "
@@ -358,6 +360,11 @@ class RobotHandler:
                 self._send_servo(ServoSetCommand(channel, config.home_angle))
                 time.sleep(0.05)
 
+    def _send_all_servos(self, angle: int) -> None:
+        """有効な全サーボを同じ角度へ動かす."""
+        logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", angle)
+        self.robot.set_all_servos(angle)
+
     def _handle_servo_button(self, event: ButtonEvent) -> None:
         """設定されたボタン操作をサーボ命令へ変換する."""
         if event.state is not ButtonState.PRESSED:
@@ -400,19 +407,10 @@ class RobotHandler:
             state.axis_info.get(AxisCode.RIGHT_STICK_X),
         )
 
-        dpad_x = state.axis_values.get(AxisCode.DPAD_X, 0)
-        dpad_y = state.axis_values.get(AxisCode.DPAD_Y, 0)
-
-        if dpad_x != 0 or dpad_y != 0:
-            # evdevの十字キーY軸は上方向が負値なので反転する。
-            vx = -dpad_y * STICK_SEND_MAX
-            vy = dpad_x * STICK_SEND_MAX
-            wz = 0
-        else:
-            # evdevの左スティックY軸は上方向が負値なので反転する。
-            vx = -ly
-            vy = lx
-            wz = -rx
+        # 走行commandはスティックだけから生成し、DPADの状態は参照しない。
+        vx = -ly
+        vy = lx
+        wz = -rx
 
         # L2またはR2を押している間は減速モードにする。
         slow_mode = (
@@ -430,14 +428,6 @@ class RobotHandler:
             vx = int(vx * SLOW_MODE_MULTIPLIER)
             vy = int(vy * SLOW_MODE_MULTIPLIER)
             wz = int(wz * SLOW_MODE_MULTIPLIER)
-
-        logger.info(
-            "[ROBOT] DRIVE -> VX=%d VY=%d WZ=%d SLOW=%s",
-            vx,
-            vy,
-            wz,
-            slow_mode,
-        )
 
         return DriveCommand(vx=vx, vy=vy, wz=wz)
 
@@ -469,8 +459,33 @@ class RobotHandler:
         self._update_tx_led()
         state.axis_values[event.code] = event.value
 
-        if event.code in (AxisCode.DPAD_X, AxisCode.DPAD_Y):
-            self.robot.drive(self._make_drive_command(state))
+        if event.code is AxisCode.DPAD_Y:
+            logger.info(
+                "[SERVO][DPAD] DPAD_Y value=%d",
+                event.value,
+            )
+
+            if event.value == -1:
+                logger.info(
+                    "[SERVO][DPAD] UP -> CH0-6 ANGLE=%d",
+                    SERVO_ALL_OPEN_ANGLE,
+                )
+                self._send_all_servos(SERVO_ALL_OPEN_ANGLE)
+
+            elif event.value == 1:
+                logger.info(
+                    "[SERVO][DPAD] DOWN -> CH0-6 ANGLE=%d",
+                    SERVO_ALL_CLOSE_ANGLE,
+                )
+                self._send_all_servos(SERVO_ALL_CLOSE_ANGLE)
+
+            else:
+                logger.info(
+                    "[SERVO][DPAD] RELEASE value=%d",
+                    event.value,
+                )
+
+            return
 
     def handle_button(self, event: ButtonEvent) -> None:
         self._update_tx_led()

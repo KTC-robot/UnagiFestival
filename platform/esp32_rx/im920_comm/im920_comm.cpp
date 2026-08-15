@@ -84,7 +84,8 @@ uint16_t parseUint16(const String& hex, int offset) {
 bool isKnownPacketType(uint8_t type) {
   return (
     type == static_cast<uint8_t>(PacketType::CONTROL) ||
-    type == static_cast<uint8_t>(PacketType::SERVO_SET)
+    type == static_cast<uint8_t>(PacketType::SERVO_SET) ||
+    type == static_cast<uint8_t>(PacketType::SERVO_SET_ALL)
   );
 }
 
@@ -240,7 +241,7 @@ void handleControlPacket(const String& hex) {
   );
 
   if (command != ControlCommand::GAIN_TUNE_KEEPALIVE) {
-    Serial.print("CONTROL <- ID=");
+    // Serial.print("CONTROL <- ID=");
     Serial.println(static_cast<uint8_t>(command));
   }
 
@@ -286,12 +287,12 @@ void handleControlPacket(const String& hex) {
         utilToInt8(utilHexByteToUint8(hex.substring(8, 10)));
 
       if (SHOW_DRIVE) {
-        Serial.print("DRIVE <- VX=");
-        Serial.print(vx);
-        Serial.print(" VY=");
-        Serial.print(vy);
-        Serial.print(" WZ=");
-        Serial.println(wz);
+        // Serial.print("DRIVE <- VX=");
+        // Serial.print(vx);
+        // Serial.print(" VY=");
+        // Serial.print(vy);
+        // Serial.print(" WZ=");
+        // Serial.println(wz);
       }
 
       chassisCtrlSetDriveCommand(vx, vy, wz);
@@ -515,7 +516,13 @@ void handlePayloadHex(const String& hex) {
   if (type == static_cast<uint8_t>(PacketType::CONTROL)) {
     handleControlPacket(hex);
   } else if (type == static_cast<uint8_t>(PacketType::SERVO_SET)) {
+    Serial.print("[SERVO][RX] HEX=");
+    Serial.println(hex);
     servoCtrlHandlePacket(hex);
+  } else if (type == static_cast<uint8_t>(PacketType::SERVO_SET_ALL)) {
+    Serial.print("[SERVO][RX ALL] HEX=");
+    Serial.println(hex);
+    servoCtrlHandleAllPacket(hex);
   }
 }
 
@@ -527,8 +534,8 @@ void handleIm920Line(const String& rawLine) {
   }
 
   if (SHOW_RAW) {
-    Serial.print("IM920 RAW <- ");
-    Serial.println(line);
+    // Serial.print("IM920 RAW <- ");
+    // Serial.println(line);
   }
 
   if (line == "OK") {

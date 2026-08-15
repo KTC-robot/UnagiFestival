@@ -51,25 +51,18 @@ STICK_SEND_MAX: Final[int] = 127
 # PCA9685 / サーボ設定
 # ============================================================
 
-SERVO_CHANNEL_COUNT: Final[int] = 16
+SERVO_CHANNEL_COUNT: Final[int] = 7
+SERVO_ALL_OPEN_ANGLE: Final[int] = 180
+SERVO_ALL_CLOSE_ANGLE: Final[int] = 0
 
 SERVO_CHANNELS: Final[tuple[ServoChannelConfig, ...]] = (
     ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
     ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
     ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
-    ServoChannelConfig(enabled=False, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
+    ServoChannelConfig(enabled=True, min_angle=0, max_angle=180, home_angle=90),
 )
 
 # Trueにすると、ラズパイ側プログラム起動時に

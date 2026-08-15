@@ -25,7 +25,8 @@ constexpr size_t IM920_TXDA_MAX_PAYLOAD_BYTES = 32;
 
 enum class PacketType : uint8_t {
   CONTROL = 0x43,
-  SERVO_SET = 0x53
+  SERVO_SET = 0x53,
+  SERVO_SET_ALL = 0x54
 };
 
 enum class ControlCommand : uint8_t {

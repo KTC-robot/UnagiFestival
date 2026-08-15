@@ -33,6 +33,8 @@ class RobotTransport(Protocol):
 
     def send_servo_set(self, command: ServoSetCommand) -> None: ...
 
+    def send_servo_set_all(self, angle: int) -> None: ...
+
 
 class RobotApi:
     """Raspberry Piから利用するESP32の意味ベースAPI."""
@@ -78,3 +80,7 @@ class RobotApi:
 
     def set_servo(self, command: ServoSetCommand) -> None:
         self._transport.send_servo_set(command)
+
+    def set_all_servos(self, angle: int) -> None:
+        """全論理サーボへ同じ角度を設定する."""
+        self._transport.send_servo_set_all(angle)
