@@ -23,6 +23,7 @@ float wheelGainLeft[NUM_WHEELS] = {};
 float driveScaleForward = 1.0f;
 float driveScaleBackward = 1.0f;
 float driveScaleOther = 1.0f;
+bool forwardBlocked = false;
 int8_t lastDriveVx = 0;
 int8_t lastDriveVy = 0;
 int8_t lastDriveWz = 0;
@@ -216,6 +217,12 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
   if (fabsf(vx) < CHASSIS_DEADZONE) vx = 0.0f;
   if (fabsf(vy) < CHASSIS_DEADZONE) vy = 0.0f;
   if (fabsf(wz) < CHASSIS_DEADZONE) wz = 0.0f;
+
+  // 前進禁止はユーザー指令基準の正方向vxだけへ適用する。
+  // gain tuning、後退、横移動、旋回には影響させない。
+  if (!tuningActive && forwardBlocked && vx > 0.0f) {
+    vx = 0.0f;
+  }
 
   // gainの方向はユーザー指令基準で判定する。VX_INVERTは車体座標系の
   // 補正なので、forward/backwardのgain選択には反転前のvxを使用する。
@@ -500,6 +507,26 @@ void chassisCtrlSetDriveScale(
   // tuning中は測定条件を1.0に固定する。通常走行中だけ現在の指令へ即時反映する。
   // STOPでlast commandとmotorsActiveを消すため、停止後のphase変更では再始動しない。
   if (!tuningActive && motorsActive) {
+    setChassisSpringLogic(
+      utilCommandToFloat(lastDriveVx),
+      utilCommandToFloat(lastDriveVy),
+      utilCommandToFloat(lastDriveWz)
+    );
+  }
+}
+
+void chassisCtrlSetForwardBlocked(bool blocked) {
+  if (forwardBlocked == blocked) {
+    return;
+  }
+
+  forwardBlocked = blocked;
+  Serial.print("[CHASSIS][FORWARD_BLOCK] ");
+  Serial.println(blocked ? "ON" : "OFF");
+
+  // block開始時は次のPi packetを待たず、保持中の指令から前進成分だけを除去する。
+  // unblock時は保存指令を再始動せず、次の通常DRIVE commandから前進を許可する。
+  if (blocked && !tuningActive && lastDriveVx > 0) {
     setChassisSpringLogic(
       utilCommandToFloat(lastDriveVx),
       utilCommandToFloat(lastDriveVy),

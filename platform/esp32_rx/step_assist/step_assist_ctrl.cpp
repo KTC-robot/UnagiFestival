@@ -172,6 +172,13 @@ void applyPhaseDriveScale(StepAssistPhase phase)
   Serial.println(otherScale, 2);
 }
 
+void applyPhaseForwardBlock(StepAssistPhase phase)
+{
+  // 後センサーが土台上にある期間だけ、通常走行の前進成分を禁止する。
+  chassisCtrlSetForwardBlocked(
+      phase == StepAssistPhase::REAR_SENSOR_LOWER);
+}
+
 void transitionTo(StepAssistPhase nextPhase)
 {
   const uint32_t now = millis();
@@ -195,6 +202,7 @@ void transitionTo(StepAssistPhase nextPhase)
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
+  applyPhaseForwardBlock(currentPhase);
 }
 
 } // namespace
@@ -218,6 +226,7 @@ void stepAssistCtrlReset()
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
+  applyPhaseForwardBlock(currentPhase);
 }
 
 void stepAssistCtrlUpdate()

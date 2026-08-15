@@ -70,6 +70,16 @@ void chassisCtrlSetDriveScale(
 );
 
 /**
+ * @brief 通常走行時の前進成分を禁止または許可する。
+ *
+ * trueの場合はユーザー指令基準で正のvxだけを無効化する。
+ * 後退、横移動、旋回およびgain tuningには影響しない。
+ *
+ * @param blocked trueで前進禁止、falseで前進許可。
+ */
+void chassisCtrlSetForwardBlocked(bool blocked);
+
+/**
  * @brief 足回りを停止し、全モーターへゼロ電流指令を即時送信する。
  *
  * 目標回転数、ランプ後回転数、PI積分値、動作中状態もリセットする。
