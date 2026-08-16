@@ -26,6 +26,8 @@ StepAssistPhase currentPhase = StepAssistPhase::NORMAL;
 
 uint32_t phaseEnteredMs = 0;
 uint32_t lastDebugLogMs = 0;
+bool resetGuardActive = false;
+uint32_t resetGuardStartedMs = 0;
 
 const char *phaseName(StepAssistPhase phase)
 {
@@ -221,16 +223,35 @@ void stepAssistCtrlReset()
 {
   currentPhase = StepAssistPhase::NORMAL;
 
-  phaseEnteredMs = millis();
+  const uint32_t now = millis();
+  phaseEnteredMs = now;
   lastDebugLogMs = 0;
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
   applyPhaseForwardBlock(currentPhase);
+
+  resetGuardActive = true;
+  resetGuardStartedMs = now;
+  Serial.print("[STEP][RESET_GUARD] START ");
+  Serial.print(STEP_ASSIST_RESET_GUARD_MS);
+  Serial.println("ms");
 }
 
 void stepAssistCtrlUpdate()
 {
+  // reset直後も他のloop処理と測距は継続し、phase遷移判定だけを停止する。
+  if (resetGuardActive)
+  {
+    if (millis() - resetGuardStartedMs < STEP_ASSIST_RESET_GUARD_MS)
+    {
+      return;
+    }
+
+    resetGuardActive = false;
+    Serial.println("[STEP][RESET_GUARD] END");
+  }
+
   switch (currentPhase)
   {
   case StepAssistPhase::NORMAL:
