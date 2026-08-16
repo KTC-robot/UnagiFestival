@@ -26,6 +26,8 @@ StepAssistPhase currentPhase = StepAssistPhase::NORMAL;
 
 uint32_t phaseEnteredMs = 0;
 uint32_t lastDebugLogMs = 0;
+bool resetGuardActive = false;
+uint32_t resetGuardStartedMs = 0;
 
 const char *phaseName(StepAssistPhase phase)
 {
@@ -172,6 +174,13 @@ void applyPhaseDriveScale(StepAssistPhase phase)
   Serial.println(otherScale, 2);
 }
 
+void applyPhaseForwardBlock(StepAssistPhase phase)
+{
+  // 後センサーが土台上にある期間だけ、通常走行の前進成分を禁止する。
+  chassisCtrlSetForwardBlocked(
+      phase == StepAssistPhase::REAR_SENSOR_LOWER);
+}
+
 void transitionTo(StepAssistPhase nextPhase)
 {
   const uint32_t now = millis();
@@ -195,6 +204,7 @@ void transitionTo(StepAssistPhase nextPhase)
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
+  applyPhaseForwardBlock(currentPhase);
 }
 
 } // namespace
@@ -213,15 +223,35 @@ void stepAssistCtrlReset()
 {
   currentPhase = StepAssistPhase::NORMAL;
 
-  phaseEnteredMs = millis();
+  const uint32_t now = millis();
+  phaseEnteredMs = now;
   lastDebugLogMs = 0;
 
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
+  applyPhaseForwardBlock(currentPhase);
+
+  resetGuardActive = true;
+  resetGuardStartedMs = now;
+  Serial.print("[STEP][RESET_GUARD] START ");
+  Serial.print(STEP_ASSIST_RESET_GUARD_MS);
+  Serial.println("ms");
 }
 
 void stepAssistCtrlUpdate()
 {
+  // reset直後も他のloop処理と測距は継続し、phase遷移判定だけを停止する。
+  if (resetGuardActive)
+  {
+    if (millis() - resetGuardStartedMs < STEP_ASSIST_RESET_GUARD_MS)
+    {
+      return;
+    }
+
+    resetGuardActive = false;
+    Serial.println("[STEP][RESET_GUARD] END");
+  }
+
   switch (currentPhase)
   {
   case StepAssistPhase::NORMAL:
