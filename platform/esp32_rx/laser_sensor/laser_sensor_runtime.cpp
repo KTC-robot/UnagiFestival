@@ -1,9 +1,10 @@
 #include "laser_sensor_runtime.hpp"
 
 #include "constants.h"
-#include "../i2c/i2c_bus.hpp"
+#include "i2c/i2c_bus.hpp"
 #include "laser_sensor_device.hpp"
 #include "laser_sensor_state.hpp"
+#include "tca9548a/tca9548a_driver.hpp"
 
 #include <Arduino.h>
 
@@ -12,6 +13,11 @@ namespace {
 uint32_t lastInitializationAttemptMs[LASER_SENSOR_COUNT] = {};
 uint32_t lastSensorReadMs = 0;
 int nextSensorToRead = 0;
+
+bool disableAllTcaChannels() {
+  I2cBusLockGuard lock;
+  return lock.locked() && tca9548aDriverDisableAllChannels();
+}
 
 void readNextAvailableSensorIfDue() {
   const uint32_t now = millis();
@@ -99,7 +105,7 @@ void recoverI2cBusIfRequired() {
   markAllSensorsUnavailable();
 
   const uint32_t now = millis();
-  bool tcaReady = i2cBusDisableAllTcaChannels();
+  bool tcaReady = disableAllTcaChannels();
   bool allSensorsRecovered = tcaReady;
 
   if (!tcaReady) {
@@ -138,7 +144,7 @@ void initializeAllSensors() {
   clearAllSensorStates();
   markAllSensorsUnavailable();
 
-  if (!i2cBusDisableAllTcaChannels()) {
+  if (!disableAllTcaChannels()) {
     Serial.println("TCA9548A 初期化失敗");
     return;
   }

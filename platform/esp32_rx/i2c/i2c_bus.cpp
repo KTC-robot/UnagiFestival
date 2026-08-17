@@ -53,20 +53,6 @@ bool beginWireUnlocked(bool restart) {
   return true;
 }
 
-bool disableAllTcaChannelsUnlocked() {
-  Wire.beginTransmission(LASER_SENSOR_TCA9548A_ADDRESS);
-  Wire.write(0x00);
-
-  const uint8_t result = Wire.endTransmission(true);
-
-  if (result != 0) {
-    Serial.print("TCA9548A 全CH無効化失敗 result=");
-    Serial.println(result);
-    return false;
-  }
-
-  return true;
-}
 }  // namespace
 
 I2cBusLockGuard::I2cBusLockGuard()
@@ -102,15 +88,6 @@ void i2cBusApplySettings() {
   applySettingsUnlocked();
 }
 
-bool i2cBusDisableAllTcaChannels() {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
-    return false;
-  }
-
-  return disableAllTcaChannelsUnlocked();
-}
-
 bool i2cBusBegin() {
   I2cBusLockGuard lock;
   if (!lock.locked()) {
@@ -130,27 +107,10 @@ bool i2cBusRestart() {
   return beginWireUnlocked(true);
 }
 
-bool i2cBusSelectTcaChannel(uint8_t channel) {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
-    return false;
-  }
-
-  if (channel >= LASER_SENSOR_TCA9548A_CHANNEL_COUNT) {
-    return false;
-  }
-
-  Wire.beginTransmission(LASER_SENSOR_TCA9548A_ADDRESS);
-  Wire.write(static_cast<uint8_t>(1U << channel));
-
-  const uint8_t result = Wire.endTransmission(true);
-
-  if (result != 0) {
-    return false;
-  }
-
-  delay(LASER_SENSOR_CHANNEL_SETTLE_MS);
-  return true;
+bool i2cBusWriteByteLocked(uint8_t address, uint8_t value) {
+  Wire.beginTransmission(address);
+  Wire.write(value);
+  return Wire.endTransmission(true) == 0;
 }
 
 bool i2cBusProbeDevice(uint8_t address) {

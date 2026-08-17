@@ -4,7 +4,7 @@
 
 /**
  * @file i2c_bus.hpp
- * @brief VL53L0X/TCA9548A/PCA9685が共有するI2Cバス制御APIを提供する。
+ * @brief Laser Sensor用I2Cバスの初期化・排他制御APIを提供する。
  */
 
 class I2cBusLockGuard {
@@ -48,19 +48,15 @@ bool i2cBusRestart();
 void i2cBusApplySettings();
 
 /**
- * @brief TCA9548Aの全チャネルを無効化する。
+ * @brief lock保持中のBusへ1byteを書き込む。
  *
- * @return 成功時true。
- */
-bool i2cBusDisableAllTcaChannels();
-
-/**
- * @brief TCA9548Aの指定チャネルだけを有効化する。
+ * 呼び出し側がI2cBusLockGuardを保持している必要がある。
  *
- * @param channel チャネル番号0〜7。
- * @return 成功時true。
+ * @param address 7bit I2Cアドレス。
+ * @param value 書き込む1byte。
+ * @return ACKを受信した場合true。
  */
-bool i2cBusSelectTcaChannel(uint8_t channel);
+bool i2cBusWriteByteLocked(uint8_t address, uint8_t value);
 
 /**
  * @brief 指定I2Cアドレスへprobeを行う。

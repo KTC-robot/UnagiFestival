@@ -3,6 +3,7 @@
 #include "laser_sensor/constants.h"
 #include "i2c/i2c_bus.hpp"
 #include "laser_sensor/laser_sensor_state.hpp"
+#include "tca9548a/tca9548a_driver.hpp"
 
 #include <Adafruit_VL53L0X.h>
 #include <Wire.h>
@@ -32,7 +33,7 @@ void recordBusSuccess() {
 }
 
 bool prepareSensorChannel(int index) {
-  if (i2cBusSelectTcaChannel(LASER_SENSOR_CHANNELS[index])) {
+  if (tca9548aDriverSelectChannel(LASER_SENSOR_CHANNELS[index])) {
     return true;
   }
 
