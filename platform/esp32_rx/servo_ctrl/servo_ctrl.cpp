@@ -1,5 +1,7 @@
 #include "servo_ctrl.h"
 
+#include <Arduino.h>
+
 #include "servo_ctrl/constants.h"
 #include "servo_manager/servo_manager.hpp"
 
@@ -69,83 +71,19 @@ void servoCtrlDisableAll() {
   servoManagerDisableAll();
 }
 
-void servoCtrlHandlePacket(const String& hex)
-{
-  Serial.print("[SERVO][CTRL] RAW=");
-  Serial.println(hex);
-
-  if (hex.length() < 6) {
-    Serial.print("[SERVO][CTRL] INVALID LENGTH=");
-    Serial.println(hex.length());
-    return;
-  }
-
-  const uint8_t channel =
-    static_cast<uint8_t>(
-      strtoul(
-        hex.substring(2, 4).c_str(),
-        nullptr,
-        16
-      )
-    );
-
-  const uint8_t angle =
-    static_cast<uint8_t>(
-      strtoul(
-        hex.substring(4, 6).c_str(),
-        nullptr,
-        16
-      )
-    );
-
-  Serial.print("[SERVO][CTRL] PARSED CH=");
-  Serial.print(channel);
-  Serial.print(" ANGLE=");
-  Serial.println(angle);
-
-  if (channel >= SERVO_CHANNEL_COUNT) {
-    Serial.print("[SERVO][CTRL] INVALID CHANNEL=");
-    Serial.println(channel);
-    return;
-  }
-
-  if (angle > 180) {
-    Serial.print("[SERVO][CTRL] INVALID ANGLE=");
-    Serial.println(angle);
-    return;
-  }
-
-  Serial.println("[SERVO][CTRL] setServoAngle() START");
-
-  if (!setServoAngle(channel, angle)) {
-    Serial.println("[SERVO][CTRL] ★ setServoAngle FAILED");
-    return;
-  }
-
-  Serial.println("[SERVO][CTRL] setServoAngle SUCCESS");
+bool servoCtrlSetAngle(uint8_t channel, uint8_t angle) {
+  if (angle > 180) return false;
+  return setServoAngle(channel, angle);
 }
 
-void servoCtrlHandleAllPacket(const String& hex) {
-  if (hex.length() < 4) {
-    Serial.print("[SERVO][ALL] INVALID LENGTH=");
-    Serial.println(hex.length());
-    return;
-  }
-
-  const uint8_t angle = static_cast<uint8_t>(
-    strtoul(hex.substring(2, 4).c_str(), nullptr, 16)
-  );
-
-  if (angle > 180) {
-    Serial.print("[SERVO][ALL] INVALID ANGLE=");
-    Serial.println(angle);
-    return;
-  }
+bool servoCtrlSetAllAngles(uint8_t angle) {
+  if (angle > 180) return false;
 
   Serial.print("[SERVO][ALL] ANGLE=");
   Serial.println(angle);
 
   // 個別packetと同じ角度制限・反転・pulse変換を全論理CHへ適用する。
+  bool succeeded = true;
   for (uint8_t channel = 0; channel < SERVO_CHANNEL_COUNT; ++channel) {
     Serial.print("[SERVO][ALL] CH=");
     Serial.print(channel);
@@ -153,6 +91,8 @@ void servoCtrlHandleAllPacket(const String& hex) {
       Serial.println(" SUCCESS");
     } else {
       Serial.println(" FAILED");
+      succeeded = false;
     }
   }
+  return succeeded;
 }

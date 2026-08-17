@@ -3,7 +3,7 @@
 #include "can_comm/can_comm.h"
 #include "chassis_ctrl/chassis_ctrl.h"
 #include "i2c/i2c_bus.hpp"
-#include "im920_comm/im920_comm.h"
+#include "im920/im920.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
 #include "servo_ctrl/servo_ctrl.h"
@@ -29,7 +29,7 @@ void setup() {
 
   servoCtrlBegin();
   chassisCtrlBegin();
-  im920CommBegin();
+  im920Begin();
   chassisCtrlStop();
 
   if (!laserSensorCtrlBegin()) {
@@ -44,12 +44,12 @@ void setup() {
 }
 
 void loop() {
-  im920CommUpdate();
+  im920Update();
 
   canCommReadFrames();
   chassisCtrlUpdate();
   canCommSendPeriodically();
 
-  im920CommCheckTimeout();
+  im920CheckTimeout();
   stepAssistCtrlUpdate();
 }

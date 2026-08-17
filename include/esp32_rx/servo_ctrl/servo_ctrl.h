@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stdint.h>
+
 
 /**
  * @file servo_ctrl.h
@@ -27,22 +28,18 @@ void servoCtrlDisableAll();
 bool servoCtrlRestoreAfterI2cRecovery();
 
 /**
- * @brief サーボ制御パケットを解析し、指定チャネルへ角度を出力する。
+ * @brief 指定した論理サーボへ角度を出力する。
  *
- * パケットは先頭の種別1バイトに続くチャネル1バイト、角度1バイトを
- * 16進文字列で表す。短いパケット、範囲外の論理サーボ番号、または180度を
- * 超える角度は出力しない。角度はサーボ別の許容範囲へ制限される。
- *
- * @param hex 解析対象の16進文字列。
+ * @param channel 論理サーボ番号。
+ * @param angle 指定角度。0〜180度。
+ * @return 出力に成功した場合true。
  */
-void servoCtrlHandlePacket(const String& hex);
+bool servoCtrlSetAngle(uint8_t channel, uint8_t angle);
 
 /**
- * @brief 全論理サーボ角度設定パケットを解析して一括出力する。
+ * @brief 全論理サーボへ同じ角度を出力する。
  *
- * packet形式は種別1バイトと角度1バイトを表す16進文字列（54AA）。
- * 短いpacketまたは180度を超える角度は出力しない。
- *
- * @param hex 解析対象の16進文字列。
+ * @param angle 指定角度。0〜180度。
+ * @return 全チャネルへの出力に成功した場合true。
  */
-void servoCtrlHandleAllPacket(const String& hex);
+bool servoCtrlSetAllAngles(uint8_t angle);
