@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file constants.hpp
+ * @brief 論理Servoごとの角度範囲、反転、PCA9685 channel対応を定義する。
+ */
+
 #include <cstdint>
 
 namespace CanConfig_servo_ctrl {

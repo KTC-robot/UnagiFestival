@@ -10,6 +10,8 @@
 using namespace CanConfig_chassis_ctrl;
 
 namespace {
+// Controllerから届く符号付き指令を、計算で扱いやすい-1.0〜1.0へ変換する。
+// 小さな入力はdeadzoneとして0にし、スティックの微小な揺れを走行へ伝えない。
 constexpr int COMMAND_MAX = 127;
 constexpr int COMMAND_DEAD = 8;
 
@@ -39,9 +41,9 @@ int8_t lastDriveVy = 0;
 int8_t lastDriveWz = 0;
 
 struct GainTuningAccumulator {
-  uint32_t sampleCount;
-  double absoluteRpmSum;
-  double absoluteRpmSquaredSum;
+  uint32_t sampleCount;          ///< 平均計算に使用した有効サンプル数。
+  double absoluteRpmSum;         ///< 実測RPM絶対値の合計。
+  double absoluteRpmSquaredSum;  ///< 標準偏差計算用のRPM絶対値二乗和。
 };
 
 GainTuningAccumulator tuningStats[NUM_MOTORS] = {};
@@ -79,6 +81,12 @@ bool allTuningTargetsSettled() {
   return true;
 }
 
+/**
+ * @brief Gain Tuningを終了し、4輪のRPM統計を確定する。
+ *
+ * 車体を先に安全停止してから、平均絶対RPMと母標準偏差を計算する。
+ * 確定した結果はIM920側が順次送信できるようready状態にする。
+ */
 void finishGainTuning() {
   tuningActive = false;
   chassisCtrlStop();
@@ -103,7 +111,7 @@ void finishGainTuning() {
   }
 
   tuningResultReady = true;
-  Serial.println("GAIN TUNING DONE -> STOP");
+  Serial.println("[CHASSIS] Gain Tuningが完了したため停止しました");
 }
 
 float applyMotorInverse(int motorIndex, float value) {
@@ -128,6 +136,7 @@ int16_t snapTargetRpm(int16_t target) {
   return target;
 }
 
+// 目標RPMを1周期で変化できる量に制限し、急な電流変化を避ける。
 float moveToward(float current, float target, float maxChange) {
   const float difference = target - current;
 
@@ -176,11 +185,11 @@ void printMotorValues(float vx, float vy, float wz) {
 
   lastMotorPrintMs = now;
 
-  Serial.print("MECANUM VX=");
+  Serial.print("[CHASSIS] 指令 vx=");
   Serial.print(vx, 2);
-  Serial.print(" VY=");
+  Serial.print(" vy=");
   Serial.print(vy, 2);
-  Serial.print(" WZ=");
+  Serial.print(" wz=");
   Serial.print(wz, 2);
   Serial.print(" PWR=");
   Serial.print(drivePowerPercent);
@@ -192,13 +201,13 @@ void printMotorValues(float vx, float vy, float wz) {
     Serial.print(WHEEL_NAME[wheelIndex]);
     Serial.print("(ID");
     Serial.print(WHEEL_ESC_ID[wheelIndex]);
-    Serial.print(") T=");
+    Serial.print(") 目標RPM=");
     Serial.print(static_cast<int>(getWheelTargetRpm(wheelIndex)));
-    Serial.print(" A=");
+    Serial.print(" 実測RPM=");
     Serial.print(static_cast<int>(getWheelMeasuredRpm(wheelIndex)));
-    Serial.print(" I=");
+    Serial.print(" 電流指令=");
     Serial.print(static_cast<int>(getWheelCurrentCommand(wheelIndex)));
-    Serial.print(" C=");
+    Serial.print(" 温度[℃]=");
     Serial.print(static_cast<int>(c620DriverGetMotorTemperature(motorIndex)));
 
     if (wheelIndex < NUM_WHEELS - 1) {
@@ -210,6 +219,7 @@ void printMotorValues(float vx, float vy, float wz) {
 }
 
 void setChassisSpringLogic(float vx, float vy, float wz) {
+  // 入力値の範囲とdeadzoneを先に確定し、以降の方向判定を統一する。
   vx = constrain(vx, -1.0f, 1.0f);
   vy = constrain(vy, -1.0f, 1.0f);
   wz = constrain(wz, -1.0f, 1.0f);
@@ -238,6 +248,8 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     return;
   }
 
+  // 前後・横・旋回を車輪別成分へ分解した後、走行方向ごとのwheel gainを
+  // 対応成分だけへ掛ける。wheel gainは車輪間の個体差補正にのみ使う。
   MecanumComponents mecanum = calculateMecanumComponents(vx, vy, wz);
 
   for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
@@ -268,6 +280,8 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     selectedDriveScale = 1.0f;
   }
 
+  // 正規化済み車輪出力を、power設定とStepAssistの車体全体scaleを反映した
+  // 実際の目標RPMへ変換する。
   const float maxRpm =
     static_cast<float>(CHASSIS_MAX_RPM) *
     (static_cast<float>(drivePowerPercent) / 100.0f) *
@@ -281,6 +295,8 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 
     const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
 
+    // 物理的な取付方向が逆のmotorだけ符号を反転し、車輪座標から
+    // C620が受け取るmotor座標へ変換する。
     const int16_t rawMotorTarget =
       static_cast<int16_t>(
         applyMotorInverse(motorIndex, static_cast<float>(wheelRpm))
@@ -308,11 +324,11 @@ void chassisCtrlBegin() {
     wheelGainLeft[wheelIndex] = DEFAULT_WHEEL_GAIN_LEFT[wheelIndex];
   }
 
-  Serial.print("Chassis ready: Kp=");
+  Serial.print("[CHASSIS] 初期化完了 Kp=");
   Serial.print(SPEED_KP, 2);
   Serial.print(" Ki=");
   Serial.print(SPEED_KI, 2);
-  Serial.print(" current_limit=+/-");
+  Serial.print(" 電流指令上限=±");
   Serial.println(MAX_CURRENT_COMMAND);
 }
 
@@ -361,6 +377,8 @@ void chassisCtrlUpdate() {
       maxRpmChange
     );
 
+    // 古いfeedbackで制御を続けると実際の回転状態を誤認するため、
+    // freshnessを失ったmotorは電流を0にして積分状態も破棄する。
     if (!c620DriverFeedbackFresh(motorIndex)) {
       c620DriverSetCurrentCommand(motorIndex, 0);
       speedControllers[motorIndex].reset();
@@ -373,6 +391,7 @@ void chassisCtrlUpdate() {
       continue;
     }
 
+    // ramp後の目標RPMとC620の実測RPMから、今回送る電流指令を求める。
     const SpeedControllerResult speedResult =
       speedControllers[motorIndex].update(
         rampedMotorRpm[motorIndex],
@@ -397,25 +416,25 @@ void chassisCtrlUpdate() {
       }
 
       if (printTuningLog) {
-        Serial.print("GAIN M");
+        Serial.print("[CHASSIS] Gain Tuning motor=");
         Serial.print(motorIndex + 1);
         Serial.print(" KP=");
         Serial.print(SPEED_KP, 3);
         Serial.print(" KI=");
         Serial.print(SPEED_KI, 3);
-        Serial.print(" TARGET=");
+        Serial.print(" 目標RPM=");
         Serial.print(rampedMotorRpm[motorIndex], 0);
-        Serial.print(" ACTUAL=");
+        Serial.print(" 実測RPM=");
         Serial.print(c620DriverGetMotorRpm(motorIndex));
-        Serial.print(" ERROR=");
+        Serial.print(" 誤差RPM=");
         Serial.print(speedResult.error, 0);
         Serial.print(" P=");
         Serial.print(SPEED_KP * speedResult.error, 0);
         Serial.print(" I=");
         Serial.print(SPEED_KI * speedResult.integral, 0);
-        Serial.print(" OUT=");
+        Serial.print(" PI出力=");
         Serial.print(speedResult.output, 0);
-        Serial.print(" SAT=");
+        Serial.print(" 飽和=");
         Serial.println(
           fabsf(speedResult.output) >=
             static_cast<float>(MAX_CURRENT_COMMAND) ? 1 : 0
@@ -476,8 +495,8 @@ void chassisCtrlSetForwardBlocked(bool blocked) {
   }
 
   forwardBlocked = blocked;
-  Serial.print("[CHASSIS][FORWARD_BLOCK] ");
-  Serial.println(blocked ? "ON" : "OFF");
+  Serial.print("[CHASSIS] 前進禁止=");
+  Serial.println(blocked ? "有効" : "解除");
 
   // block開始時は次のPi packetを待たず、保持中の指令から前進成分だけを除去する。
   // unblock時は保存指令を再始動せず、次の通常DRIVE commandから前進を許可する。
@@ -491,6 +510,8 @@ void chassisCtrlSetForwardBlocked(bool blocked) {
 }
 
 void chassisCtrlStop() {
+  // STOP後のscale変更やphase遷移で古い指令が再適用されないよう、
+  // 目標・保持Command・PI積分・Gain Tuning状態をまとめて破棄する。
   tuningActive = false;
   tuningResultReady = false;
   tuningSamplingStarted = false;
@@ -517,7 +538,7 @@ void chassisCtrlChangePower(int delta) {
     DRIVE_POWER_MAX
   );
 
-  Serial.print("DRIVE POWER=");
+  Serial.print("[CHASSIS] 走行出力率=");
   Serial.print(drivePowerPercent);
   Serial.println("%");
 }
@@ -561,7 +582,7 @@ void chassisCtrlStartGainTuning(
   tuningActive = true;
   chassisCtrlSetDriveCommand(vx, vy, wz);
 
-  Serial.print("GAIN TUNING START duration_ms=");
+  Serial.print("[CHASSIS] Gain Tuningを開始します duration[ms]=");
   Serial.println(tuningDurationMs);
 }
 

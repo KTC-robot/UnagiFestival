@@ -1,5 +1,10 @@
 #include <Arduino.h>
 
+/**
+ * @file main.cpp
+ * @brief ESP32 firmwareの初期化順序と周期処理をまとめるentry point。
+ */
+
 #include "device/c620_driver.hpp"
 #include "chassis_ctrl/chassis_ctrl.hpp"
 #include "device/i2c_bus.hpp"
@@ -15,16 +20,18 @@ void setup() {
 
   delay(500);
 
+  // 安全側出力を最初に確定し、device driver、制御、通信、sensor task、
+  // StepAssistの順に初期化する。起動途中でもmotorは停止状態を維持する。
   relayDriverBegin();
 
   if (!c620DriverBegin()) {
     Serial.println(
-      "WARNING: CAN initialization failed. Motors remain stopped."
+      "[C620] 警告: CAN初期化に失敗したためmotorを停止状態に保ちます"
     );
   }
 
   if (!i2cBusBegin()) {
-    Serial.println("WARNING: shared I2C bus initialization failed.");
+    Serial.println("[I2C] 警告: LaserSensor用Busの初期化に失敗しました");
   }
 
   servoCtrlBegin();
@@ -33,17 +40,19 @@ void setup() {
   chassisCtrlStop();
 
   if (!laserSensorCtrlBegin()) {
-    Serial.println("WARNING: laser sensor task startup failed.");
+    Serial.println("[LASER] 警告: 測距taskの起動に失敗しました");
   }
 
   stepAssistCtrlBegin();
 
   Serial.println();
-  Serial.println("READY");
+  Serial.println("[SYSTEM] 初期化が完了しました");
   Serial.println();
 }
 
 void loop() {
+  // 通信受信、CAN feedback、速度制御、電流送信の順序を毎loopで保つ。
+  // timeout監視とStepAssistもblockingせず更新し、安全停止と状態遷移を行う。
   im920Update();
 
   c620DriverReadFrames();

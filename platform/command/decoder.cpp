@@ -7,6 +7,7 @@
 using namespace CommandProtocol;
 
 namespace {
+// payloadは「2文字で1byte」を表す16進ASCII文字列である。
 bool hexNibble(char value, uint8_t& nibble) {
   if (value >= '0' && value <= '9') {
     nibble = static_cast<uint8_t>(value - '0');
@@ -24,6 +25,7 @@ bool hexNibble(char value, uint8_t& nibble) {
 }
 
 bool byteAt(std::string_view payload, size_t offset, uint8_t& value) {
+  // offsetは文字位置であり、1byte進める場合は2文字進める。
   if (offset + 2 > payload.size()) return false;
   uint8_t high = 0;
   uint8_t low = 0;
@@ -41,16 +43,19 @@ bool uint16At(std::string_view payload, size_t offset, uint16_t& value) {
   if (!byteAt(payload, offset, high) || !byteAt(payload, offset + 2, low)) {
     return false;
   }
+  // wire上のbig endian順から16bit値を復元する。
   value = static_cast<uint16_t>((static_cast<uint16_t>(high) << 8) | low);
   return true;
 }
 
 int8_t toInt8(uint8_t value) {
+  // 0x80〜0xFFを負数として扱い、Python側の符号付き指令を復元する。
   return value < 0x80 ? static_cast<int8_t>(value)
                       : static_cast<int8_t>(static_cast<int16_t>(value) - 256);
 }
 
 bool decodeControl(std::string_view payload, Command& command) {
+  // 先頭byteはPacketType、その次のbyteがCONTROL内のCommand IDである。
   uint8_t commandId = 0;
   if (!byteAt(payload, 2, commandId)) return false;
 
@@ -79,6 +84,7 @@ bool decodeControl(std::string_view payload, Command& command) {
       uint16_t scaledGain = 0;
       if (!byteAt(payload, 4, first) || !byteAt(payload, 6, second) ||
           !uint16At(payload, 8, scaledGain)) return false;
+      // 小数gainはwire上では1000倍したuint16として送られる。
       const float gain = static_cast<float>(scaledGain) / GAIN_WIRE_SCALE;
       if (first >= GAIN_TUNING_WHEEL_COUNT ||
           second >= GAIN_TUNING_WHEEL_COUNT || gain < 0.5f || gain > 1.5f) {
@@ -97,6 +103,7 @@ bool decodeControl(std::string_view payload, Command& command) {
           return false;
         }
         command.type = CommandType::GAIN_TUNE_START;
+        // 計測時間は100ms単位の1byteで受け取り、安全上限以内へ制限する。
         command.gainTuneStart = {
           toInt8(first), toInt8(second), toInt8(third),
           std::min(

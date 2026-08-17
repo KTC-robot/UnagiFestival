@@ -5,6 +5,8 @@
 #include "step_assist/step_assist_ctrl.hpp"
 
 CommandDispatchResult dispatchCommand(const Command& command) {
+  // Decoderがwire形式を意味的なCommandへ変換済みなので、ここではpacketを
+  // 再解析せず、種類に対応するSystem APIへ値を引き渡すだけにする。
   CommandDispatchResult result;
 
   switch (command.type) {

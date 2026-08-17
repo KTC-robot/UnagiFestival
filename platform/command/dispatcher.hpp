@@ -1,18 +1,23 @@
 #pragma once
 
+/**
+ * @file dispatcher.hpp
+ * @brief 復号済みCommandを対応する機体Systemへ引き渡す。
+ */
+
 #include <stdint.h>
 
 #include "command/command.hpp"
 
 /** @brief Command実行後にIM920側が行う返信・状態更新の種類。 */
 enum class CommandReply : uint8_t {
-  NONE,
-  CTRL_STOP,
-  CTRL_ESTOP,
-  POWER,
-  WHEEL_GAIN,
-  TUNE_START,
-  STEP_RESET,
+  NONE,         ///< 返信を送らない。
+  CTRL_STOP,    ///< 通常停止完了を返信する。
+  CTRL_ESTOP,   ///< 緊急停止完了を返信する。
+  POWER,        ///< 現在の走行出力率を返信する。
+  WHEEL_GAIN,   ///< 適用した車輪gainを返信する。
+  TUNE_START,   ///< RPM計測試験の開始を返信する。
+  STEP_RESET,   ///< StepAssistのreset完了を返信する。
 };
 
 /**
