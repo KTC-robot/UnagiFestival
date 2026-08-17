@@ -3,7 +3,7 @@
 #include "chassis_ctrl/chassis_ctrl.h"
 #include "laser_sensor/constants.h"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
-#include "relay/relay_ctrl.hpp"
+#include "relay/relay_driver.hpp"
 #include "step_assist/constants.h"
 #include "step_assist/step_assist_logic.hpp"
 
@@ -85,12 +85,12 @@ void printDistanceDebug(
 
 void setFrontRaised(bool raised)
 {
-  relayCtrlSetFront(!raised);
+  relayDriverSetFront(!raised);
 }
 
 void setRearRaised(bool raised)
 {
-  relayCtrlSetRear(!raised);
+  relayDriverSetRear(!raised);
 }
 
 void applyPhaseOutputs(StepAssistPhase phase)

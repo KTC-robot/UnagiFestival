@@ -1,12 +1,12 @@
-#include "servo_manager/servo_manager.hpp"
+#include "pca9685/pca9685_driver.hpp"
 
 #include <Adafruit_PWMServoDriver.h>
 #include <Arduino.h>
 #include <Wire.h>
 
-#include "servo_manager/constants.h"
+#include "pca9685/constants.h"
 
-using namespace CanConfig_servo_manager;
+using namespace Pca9685Config;
 
 namespace {
 
@@ -20,7 +20,7 @@ Adafruit_PWMServoDriver servoDriver(
 
 uint16_t lastPulseUs[PCA9685_CHANNEL_COUNT] = {};
 bool outputActive[PCA9685_CHANNEL_COUNT] = {};
-bool managerInitialized = false;
+bool driverInitialized = false;
 
 uint16_t microsecondsToPcaTicks(uint16_t pulseUs)
 {
@@ -41,7 +41,7 @@ uint16_t microsecondsToPcaTicks(uint16_t pulseUs)
 bool probePca9685()
 {
   Serial.println(
-    "[SERVO_MANAGER] PCA9685 0x40をprobeします"
+    "[PCA9685] PCA9685 0x40をprobeします"
   );
 
   servoWire.beginTransmission(PCA9685_ADDRESS);
@@ -50,7 +50,7 @@ bool probePca9685()
     servoWire.endTransmission(true);
 
   Serial.print(
-    "[SERVO_MANAGER] PCA9685 probe result="
+    "[PCA9685] PCA9685 probe result="
   );
   Serial.println(result);
 
@@ -72,7 +72,7 @@ void disableAll()
 bool initializeDriver()
 {
   Serial.print(
-    "[SERVO_MANAGER] 専用I2C初期化 SDA="
+    "[PCA9685] 専用I2C初期化 SDA="
   );
   Serial.print(SERVO_I2C_SDA_PIN);
   Serial.print(" SCL=");
@@ -87,39 +87,39 @@ bool initializeDriver()
         SERVO_I2C_CLOCK_HZ
       )) {
     Serial.println(
-      "[SERVO_MANAGER] ★ 専用I2C初期化失敗"
+      "[PCA9685] ★ 専用I2C初期化失敗"
     );
     return false;
   }
 
   Serial.println(
-    "[SERVO_MANAGER] 専用I2C初期化成功"
+    "[PCA9685] 専用I2C初期化成功"
   );
 
   if (!probePca9685()) {
     Serial.println(
-      "[SERVO_MANAGER] ★ PCA9685が見つかりません"
+      "[PCA9685] ★ PCA9685が見つかりません"
     );
     return false;
   }
 
   Serial.println(
-    "[SERVO_MANAGER] PCA9685検出成功"
+    "[PCA9685] PCA9685検出成功"
   );
 
   Serial.println(
-    "[SERVO_MANAGER] servoDriver.begin()"
+    "[PCA9685] servoDriver.begin()"
   );
 
   if (!servoDriver.begin()) {
     Serial.println(
-      "[SERVO_MANAGER] ★ PCA9685 begin失敗"
+      "[PCA9685] ★ PCA9685 begin失敗"
     );
     return false;
   }
 
   Serial.println(
-    "[SERVO_MANAGER] PWM周波数=50Hz設定"
+    "[PCA9685] PWM周波数=50Hz設定"
   );
 
   servoDriver.setPWMFreq(
@@ -133,45 +133,45 @@ bool initializeDriver()
 
 }  // namespace
 
-bool servoManagerBegin()
+bool pca9685DriverBegin()
 {
   Serial.println(
-    "[SERVO_MANAGER] 初期化開始"
+    "[PCA9685] 初期化開始"
   );
 
   if (!initializeDriver()) {
     Serial.println(
-      "[SERVO_MANAGER] ★ 初期化失敗"
+      "[PCA9685] ★ 初期化失敗"
     );
     return false;
   }
 
   disableAll();
 
-  managerInitialized = true;
+  driverInitialized = true;
 
   Serial.println(
-    "[SERVO_MANAGER] PCA9685準備完了"
+    "[PCA9685] PCA9685準備完了"
   );
 
   return true;
 }
 
-bool servoManagerSetPulseUs(
+bool pca9685DriverSetPulseUs(
   uint8_t channel,
   uint16_t pulseUs
 )
 {
-  if (!managerInitialized) {
+  if (!driverInitialized) {
     Serial.println(
-      "[SERVO_MANAGER] 未初期化"
+      "[PCA9685] 未初期化"
     );
     return false;
   }
 
   if (channel >= PCA9685_CHANNEL_COUNT) {
     Serial.println(
-      "[SERVO_MANAGER] 不正なCH"
+      "[PCA9685] 不正なCH"
     );
     return false;
   }
@@ -186,7 +186,7 @@ bool servoManagerSetPulseUs(
       ticks
     );
 
-  Serial.print("[SERVO_MANAGER] CH=");
+  Serial.print("[PCA9685] CH=");
   Serial.print(channel);
   Serial.print(" pulse=");
   Serial.print(pulseUs);
@@ -205,10 +205,10 @@ bool servoManagerSetPulseUs(
   return true;
 }
 
-bool servoManagerDisable(uint8_t channel)
+bool pca9685DriverDisable(uint8_t channel)
 {
   if (
-    !managerInitialized ||
+    !driverInitialized ||
     channel >= PCA9685_CHANNEL_COUNT
   ) {
     return false;
@@ -226,21 +226,20 @@ bool servoManagerDisable(uint8_t channel)
   return true;
 }
 
-void servoManagerDisableAll()
+void pca9685DriverDisableAll()
 {
-  if (!managerInitialized) {
+  if (!driverInitialized) {
     return;
   }
 
   disableAll();
 }
 
-bool servoManagerRestoreAfterI2cRecovery()
+bool pca9685DriverReinitialize()
 {
-  // 現在はレーザー用共有I2Cとは独立しているため、
-  // 専用I2C/PCA9685を直接再初期化する。
+  // Laser Sensor用Busとは独立した専用I2C/PCA9685だけを再初期化する。
 
-  if (!managerInitialized) {
+  if (!driverInitialized) {
     return true;
   }
 
@@ -249,7 +248,7 @@ bool servoManagerRestoreAfterI2cRecovery()
 
   if (!initializeDriver()) {
     Serial.println(
-      "[SERVO_MANAGER] ★ PCA9685復旧失敗"
+      "[PCA9685] ★ PCA9685復旧失敗"
     );
     return false;
   }
@@ -277,7 +276,7 @@ bool servoManagerRestoreAfterI2cRecovery()
   }
 
   Serial.println(
-    "[SERVO_MANAGER] PCA9685状態復旧完了"
+    "[PCA9685] PCA9685状態復旧完了"
   );
 
   return true;

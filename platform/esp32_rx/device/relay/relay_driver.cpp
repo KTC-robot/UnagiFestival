@@ -1,4 +1,4 @@
-#include "relay_ctrl.hpp"
+#include "relay/relay_driver.hpp"
 
 #include "relay/constants.h"
 
@@ -11,12 +11,12 @@ bool rearValveOn = false;
 
 }  // namespace
 
-bool relayCtrlBegin()
+bool relayDriverBegin()
 {
     pinMode(RELAY_FRONT_VALVE_PIN, OUTPUT);
     pinMode(RELAY_REAR_VALVE_PIN, OUTPUT);
 
-    relayCtrlForceOff();
+    relayDriverForceOff();
 
     Serial.println("リレー制御を初期化しました");
     Serial.print("前側電磁弁 GPIO=");
@@ -27,7 +27,7 @@ bool relayCtrlBegin()
     return true;
 }
 
-void relayCtrlSetFront(bool on)
+void relayDriverSetFront(bool on)
 {
     if (frontValveOn == on) {
         return;
@@ -40,15 +40,11 @@ void relayCtrlSetFront(bool on)
         on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
     );
 
-    Serial.print("前側電磁弁: ");
-    Serial.println(
-        on
-            ? "ON（シリンダー伸長 / 機構DOWN）"
-            : "OFF（シリンダー収縮 / 機構UP）"
-    );
+    Serial.print("前側リレー: ");
+    Serial.println(on ? "ON" : "OFF");
 }
 
-void relayCtrlSetRear(bool on)
+void relayDriverSetRear(bool on)
 {
     if (rearValveOn == on) {
         return;
@@ -61,25 +57,21 @@ void relayCtrlSetRear(bool on)
         on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
     );
 
-    Serial.print("後側電磁弁: ");
-    Serial.println(
-        on
-            ? "ON（シリンダー伸長 / 機構DOWN）"
-            : "OFF（シリンダー収縮 / 機構UP）"
-    );
+    Serial.print("後側リレー: ");
+    Serial.println(on ? "ON" : "OFF");
 }
 
-bool relayCtrlFrontOn()
+bool relayDriverFrontOn()
 {
     return frontValveOn;
 }
 
-bool relayCtrlRearOn()
+bool relayDriverRearOn()
 {
     return rearValveOn;
 }
 
-void relayCtrlForceOff()
+void relayDriverForceOff()
 {
     frontValveOn = false;
     rearValveOn = false;

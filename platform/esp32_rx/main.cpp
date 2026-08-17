@@ -1,11 +1,11 @@
 #include <Arduino.h>
 
-#include "can_comm/can_comm.h"
+#include "c620/c620_driver.hpp"
 #include "chassis_ctrl/chassis_ctrl.h"
 #include "i2c/i2c_bus.hpp"
 #include "im920/im920.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
-#include "relay/relay_ctrl.hpp"
+#include "relay/relay_driver.hpp"
 #include "servo_ctrl/servo_ctrl.h"
 #include "step_assist/step_assist_ctrl.hpp"
 
@@ -15,9 +15,9 @@ void setup() {
 
   delay(500);
 
-  relayCtrlBegin();
+  relayDriverBegin();
 
-  if (!canCommBegin()) {
+  if (!c620DriverBegin()) {
     Serial.println(
       "WARNING: CAN initialization failed. Motors remain stopped."
     );
@@ -46,9 +46,9 @@ void setup() {
 void loop() {
   im920Update();
 
-  canCommReadFrames();
+  c620DriverReadFrames();
   chassisCtrlUpdate();
-  canCommSendPeriodically();
+  c620DriverSendPeriodically();
 
   im920CheckTimeout();
   stepAssistCtrlUpdate();

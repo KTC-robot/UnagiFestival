@@ -9,23 +9,16 @@
  */
 
 /**
- * @brief servo_managerを初期化し、全サーボ出力を停止する。
+ * @brief PCA9685 Driverを初期化し、全サーボ出力を停止する。
  *
- * 共有I2Cバスは事前にi2cBusBegin()で初期化されていることを前提とする。
+ * PCA9685 DriverがServo専用I2Cも同時に初期化する。
  */
 void servoCtrlBegin();
 
 /**
- * @brief servo_managerへ全サーボ出力の停止を指示する。
+ * @brief PCA9685 Driverへ全サーボ出力の停止を指示する。
  */
 void servoCtrlDisableAll();
-
-/**
- * @brief I2C bus recovery後の出力復元をservo_managerへ委譲する。
- *
- * @return 全チャネルの復元に成功した場合true。
- */
-bool servoCtrlRestoreAfterI2cRecovery();
 
 /**
  * @brief 指定した論理サーボへ角度を出力する。
