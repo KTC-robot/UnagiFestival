@@ -5,20 +5,12 @@
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "relay/relay_ctrl.hpp"
 #include "step_assist/constants.h"
+#include "step_assist/step_assist_logic.hpp"
 
 #include <Arduino.h>
 
 namespace
 {
-
-enum class StepAssistPhase
-{
-  NORMAL,
-  FRONT_LOWERED,
-  BOTH_LOWERED,
-  REAR_SENSOR_LOWER,
-  REAR_RAISED,
-};
 
 constexpr uint32_t STEP_ASSIST_DEBUG_LOG_INTERVAL_MS = 300;
 
@@ -207,6 +199,176 @@ void transitionTo(StepAssistPhase nextPhase)
   applyPhaseForwardBlock(currentPhase);
 }
 
+/**
+ * @brief LaserSensor Facadeから遷移判断用の現在値を取得する。
+ *
+ * 現phaseの遷移判定で使用するSensorだけを参照し、不要なSensor stateには
+ * アクセスしない。距離を取得しないSensorはfresh=false、distance=-1のまま返す。
+ *
+ * @param now phase経過時間の計算に使用するmillis()時刻。
+ * @return fresh状態、距離、phase経過時間をまとめた入力値。
+ */
+StepAssistInput readStepAssistInput(uint32_t now)
+{
+  StepAssistInput input = {};
+  input.frontDistanceMm = -1;
+  input.centerDistanceMm = -1;
+  input.rearDistanceMm = -1;
+  input.phaseElapsedMs = now - phaseEnteredMs;
+
+  switch (currentPhase)
+  {
+  case StepAssistPhase::NORMAL:
+  case StepAssistPhase::REAR_RAISED:
+    input.frontFresh = laserSensorCtrlFresh(LASER_SENSOR_FRONT);
+    if (input.frontFresh)
+    {
+      input.frontDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
+    }
+    break;
+
+  case StepAssistPhase::FRONT_LOWERED:
+    input.centerFresh = laserSensorCtrlFresh(LASER_SENSOR_CENTER);
+    if (input.centerFresh)
+    {
+      input.centerDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
+    }
+    break;
+
+  case StepAssistPhase::BOTH_LOWERED:
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    input.rearFresh = laserSensorCtrlFresh(LASER_SENSOR_REAR);
+    if (input.rearFresh)
+    {
+      input.rearDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
+    }
+    break;
+  }
+
+  return input;
+}
+
+/**
+ * @brief 現phaseが使用するSensor値を一定周期でdebug出力する。
+ *
+ * @param input 現在のSensor状態とphase経過時間。
+ */
+void printCurrentPhaseDebug(const StepAssistInput& input)
+{
+  if (!shouldPrintDebugLog())
+  {
+    return;
+  }
+
+  switch (currentPhase)
+  {
+  case StepAssistPhase::NORMAL:
+  case StepAssistPhase::REAR_RAISED:
+    if (input.frontFresh)
+    {
+      printDistanceDebug(
+        "FRONT",
+        currentPhase == StepAssistPhase::NORMAL
+          ? "STEP_DETECT"
+          : "DROP_DETECT",
+        input.frontDistanceMm
+      );
+    }
+    else
+    {
+      Serial.println("[STEP][DEBUG] FRONT measurement invalid");
+    }
+    break;
+
+  case StepAssistPhase::FRONT_LOWERED:
+    if (input.centerFresh)
+    {
+      printDistanceDebug("CENTER", "STEP_DETECT", input.centerDistanceMm);
+    }
+    else
+    {
+      Serial.println("[STEP][DEBUG] CENTER measurement invalid");
+    }
+    break;
+
+  case StepAssistPhase::BOTH_LOWERED:
+    if (input.rearFresh)
+    {
+      printDistanceDebug("REAR", "STEP_DETECT", input.rearDistanceMm);
+    }
+    else
+    {
+      Serial.println("[STEP][DEBUG] REAR measurement invalid");
+    }
+    break;
+
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    if (!input.rearFresh)
+    {
+      Serial.println("[STEP][DEBUG] REAR measurement invalid");
+      break;
+    }
+
+    Serial.print("[STEP][DEBUG] t=");
+    Serial.print(millis());
+    Serial.print(" phase=");
+    Serial.print(phaseName(currentPhase));
+    Serial.print(" sensor=REAR mode=DROP_DETECT distance=");
+    Serial.print(input.rearDistanceMm);
+    Serial.print(" mm elapsed=");
+    Serial.print(input.phaseElapsedMs);
+    Serial.print(" grace=");
+    Serial.print(STEP_ASSIST_REAR_DROP_GRACE_MS);
+    Serial.println(" ms");
+    break;
+  }
+}
+
+/**
+ * @brief phase遷移を発生させたSensor値を出力する。
+ *
+ * @param phase 遷移前のphase。
+ * @param input 遷移判断に使用したSensor入力。
+ */
+void printTransitionTrigger(
+  StepAssistPhase phase,
+  const StepAssistInput& input
+)
+{
+  switch (phase)
+  {
+  case StepAssistPhase::NORMAL:
+    Serial.print("[STEP][TRIGGER] FRONT step distance=");
+    Serial.print(input.frontDistanceMm);
+    break;
+
+  case StepAssistPhase::FRONT_LOWERED:
+    Serial.print("[STEP][TRIGGER] CENTER step distance=");
+    Serial.print(input.centerDistanceMm);
+    break;
+
+  case StepAssistPhase::BOTH_LOWERED:
+    Serial.print("[STEP][TRIGGER] REAR step distance=");
+    Serial.print(input.rearDistanceMm);
+    break;
+
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    Serial.print("[STEP][TRIGGER] REAR drop distance=");
+    Serial.print(input.rearDistanceMm);
+    break;
+
+  case StepAssistPhase::REAR_RAISED:
+    Serial.print("[STEP][TRIGGER] FRONT drop distance=");
+    Serial.print(input.frontDistanceMm);
+    break;
+  }
+
+  Serial.println(" mm");
+}
+
 } // namespace
 
 bool stepAssistCtrlBegin()
@@ -252,227 +414,17 @@ void stepAssistCtrlUpdate()
     Serial.println("[STEP][RESET_GUARD] END");
   }
 
-  switch (currentPhase)
+  const uint32_t now = millis();
+  const StepAssistInput input = readStepAssistInput(now);
+  printCurrentPhaseDebug(input);
+
+  const StepAssistPhase nextPhase =
+    evaluateStepAssistPhase(currentPhase, input);
+  if (nextPhase == currentPhase)
   {
-  case StepAssistPhase::NORMAL:
-    if (laserSensorCtrlFresh(LASER_SENSOR_FRONT))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(
-              LASER_SENSOR_FRONT);
-
-      if (shouldPrintDebugLog())
-      {
-        printDistanceDebug(
-            "FRONT",
-            "STEP_DETECT",
-            distance);
-      }
-
-      if (
-          distance <=
-          STEP_ASSIST_STEP_DETECT_THRESHOLD_MM)
-      {
-        Serial.print(
-            "[STEP][TRIGGER] FRONT step distance=");
-        Serial.print(distance);
-        Serial.println(" mm");
-
-        transitionTo(
-            StepAssistPhase::FRONT_LOWERED);
-      }
-    }
-    else
-    {
-      if (shouldPrintDebugLog())
-      {
-        Serial.println(
-            "[STEP][DEBUG] FRONT measurement invalid");
-      }
-    }
-
-    break;
-
-  case StepAssistPhase::FRONT_LOWERED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_CENTER))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(
-              LASER_SENSOR_CENTER);
-
-      if (shouldPrintDebugLog())
-      {
-        printDistanceDebug(
-            "CENTER",
-            "STEP_DETECT",
-            distance);
-      }
-
-      if (
-          distance <=
-          STEP_ASSIST_STEP_DETECT_THRESHOLD_MM)
-      {
-        Serial.print(
-            "[STEP][TRIGGER] CENTER step distance=");
-        Serial.print(distance);
-        Serial.println(" mm");
-
-        transitionTo(
-            StepAssistPhase::BOTH_LOWERED);
-      }
-    }
-    else
-    {
-      if (shouldPrintDebugLog())
-      {
-        Serial.println(
-            "[STEP][DEBUG] CENTER measurement invalid");
-      }
-    }
-
-    break;
-
-  case StepAssistPhase::BOTH_LOWERED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(
-              LASER_SENSOR_REAR);
-
-      if (shouldPrintDebugLog())
-      {
-        printDistanceDebug(
-            "REAR",
-            "STEP_DETECT",
-            distance);
-      }
-
-      if (
-          distance <=
-          STEP_ASSIST_STEP_DETECT_THRESHOLD_MM)
-      {
-        Serial.print(
-            "[STEP][TRIGGER] REAR step distance=");
-        Serial.print(distance);
-        Serial.println(" mm");
-
-        transitionTo(
-            StepAssistPhase::REAR_SENSOR_LOWER);
-      }
-    }
-    else
-    {
-      if (shouldPrintDebugLog())
-      {
-        Serial.println(
-            "[STEP][DEBUG] REAR measurement invalid");
-      }
-    }
-
-    break;
-
-  case StepAssistPhase::REAR_SENSOR_LOWER:
-    if (laserSensorCtrlFresh(LASER_SENSOR_REAR))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(
-              LASER_SENSOR_REAR);
-
-      const uint32_t elapsedMs =
-          millis() - phaseEnteredMs;
-
-      if (shouldPrintDebugLog())
-      {
-        Serial.print("[STEP][DEBUG] t=");
-        Serial.print(millis());
-
-        Serial.print(" phase=");
-        Serial.print(phaseName(currentPhase));
-
-        Serial.print(" sensor=REAR");
-        Serial.print(" mode=DROP_DETECT");
-
-        Serial.print(" distance=");
-        Serial.print(distance);
-
-        Serial.print(" mm elapsed=");
-        Serial.print(elapsedMs);
-
-        Serial.print(" grace=");
-        Serial.print(
-            STEP_ASSIST_REAR_DROP_GRACE_MS);
-
-        Serial.println(" ms");
-      }
-
-      if (
-          elapsedMs <
-          STEP_ASSIST_REAR_DROP_GRACE_MS)
-      {
-        break;
-      }
-
-      if (
-          distance >=
-          STEP_ASSIST_DROP_DETECT_THRESHOLD_MM)
-      {
-        Serial.print(
-            "[STEP][TRIGGER] REAR drop distance=");
-        Serial.print(distance);
-        Serial.println(" mm");
-
-        transitionTo(
-            StepAssistPhase::REAR_RAISED);
-      }
-    }
-    else
-    {
-      if (shouldPrintDebugLog())
-      {
-        Serial.println(
-            "[STEP][DEBUG] REAR measurement invalid");
-      }
-    }
-
-    break;
-
-  case StepAssistPhase::REAR_RAISED:
-    if (laserSensorCtrlFresh(LASER_SENSOR_FRONT))
-    {
-      const int distance =
-          laserSensorCtrlGetDistanceMm(
-              LASER_SENSOR_FRONT);
-
-      if (shouldPrintDebugLog())
-      {
-        printDistanceDebug(
-            "FRONT",
-            "DROP_DETECT",
-            distance);
-      }
-
-      if (
-          distance >=
-          STEP_ASSIST_DROP_DETECT_THRESHOLD_MM)
-      {
-        Serial.print(
-            "[STEP][TRIGGER] FRONT drop distance=");
-        Serial.print(distance);
-        Serial.println(" mm");
-
-        transitionTo(
-            StepAssistPhase::NORMAL);
-      }
-    }
-    else
-    {
-      if (shouldPrintDebugLog())
-      {
-        Serial.println(
-            "[STEP][DEBUG] FRONT measurement invalid");
-      }
-    }
-
-    break;
+    return;
   }
+
+  printTransitionTrigger(currentPhase, input);
+  transitionTo(nextPhase);
 }
