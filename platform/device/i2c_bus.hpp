@@ -7,21 +7,32 @@
  * @brief Laser Sensor用I2Cバスの初期化・排他制御APIを提供する。
  */
 
+/**
+ * @brief LaserSensor用I2C Busのmutexをscope単位で保持する。
+ *
+ * constructorでlockし、scopeを抜ける際に自動unlockすることで、
+ * TCA channel選択からVL53L0X操作までの排他を崩さない。
+ */
 class I2cBusLockGuard {
  public:
+  /** @brief I2C Busのrecursive mutexを取得する。 */
   I2cBusLockGuard();
+  /** @brief 取得済みの場合にI2C Busのmutexを解放する。 */
   ~I2cBusLockGuard();
 
   I2cBusLockGuard(const I2cBusLockGuard&) = delete;
   I2cBusLockGuard& operator=(const I2cBusLockGuard&) = delete;
 
+  /** @return mutexを取得できている場合true。 */
   bool locked() const;
 
  private:
   bool locked_;
 };
 
+/** @return mutexの取得に成功した場合true。 */
 bool i2cBusLock();
+/** @brief 現在のtaskが保持するI2C mutexを1段階解放する。 */
 void i2cBusUnlock();
 
 /**
@@ -29,7 +40,7 @@ void i2cBusUnlock();
  *
  * 通常起動時に1回だけ呼び出す。Wire.end()は行わない。
  *
- * @return 初期化成功時true。
+ * @return mutex生成とWire初期化に成功した場合true。失敗時false。
  */
 bool i2cBusBegin();
 
@@ -38,7 +49,7 @@ bool i2cBusBegin();
  *
  * Wire.end()とWire.begin()を伴うため、個別デバイスの通常retryには使用しない。
  *
- * @return 再初期化成功時true。
+ * @return Wire.end()後の再初期化に成功した場合true。失敗時false。
  */
 bool i2cBusRestart();
 

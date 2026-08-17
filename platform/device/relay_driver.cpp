@@ -21,10 +21,10 @@ bool relayDriverBegin()
 
     relayDriverForceOff();
 
-    Serial.println("リレー制御を初期化しました");
-    Serial.print("前側電磁弁 GPIO=");
+    Serial.println("[RELAY] GPIOの初期化が完了しました");
+    Serial.print("[RELAY] 前側電磁弁 GPIO=");
     Serial.println(RELAY_FRONT_VALVE_PIN);
-    Serial.print("後側電磁弁 GPIO=");
+    Serial.print("[RELAY] 後側電磁弁 GPIO=");
     Serial.println(RELAY_REAR_VALVE_PIN);
 
     return true;
@@ -43,7 +43,7 @@ void relayDriverSetFront(bool on)
         on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
     );
 
-    Serial.print("前側リレー: ");
+    Serial.print("[RELAY] 前側出力=");
     Serial.println(on ? "ON" : "OFF");
 }
 
@@ -60,7 +60,7 @@ void relayDriverSetRear(bool on)
         on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL
     );
 
-    Serial.print("後側リレー: ");
+    Serial.print("[RELAY] 後側出力=");
     Serial.println(on ? "ON" : "OFF");
 }
 
@@ -89,7 +89,5 @@ void relayDriverForceOff()
         RELAY_OFF_LEVEL
     );
 
-    Serial.println(
-        "前後の電磁弁を安全側OFFにしました"
-    );
+    Serial.println("[RELAY] 前後の電磁弁を安全側OFFにしました");
 }

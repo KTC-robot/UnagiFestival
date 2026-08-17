@@ -99,7 +99,7 @@ void disableSensor(int index) {
   invalidateSensorReading(index);
   sensorStates[index].errorCount = 0;
 
-  Serial.print("VL53L0X 無効化: ");
+  Serial.print("[LASER] センサーを利用不可にしました sensor=");
   Serial.println(LASER_SENSOR_NAMES[index]);
 }
 

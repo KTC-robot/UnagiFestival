@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file constants.hpp
+ * @brief VL53L0X群、TCA9548A、測距task、filterの設定を定義する。
+ */
+
 #include <Arduino.h>
 
 // ========================================

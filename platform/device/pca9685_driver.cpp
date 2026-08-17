@@ -13,7 +13,7 @@ constexpr uint8_t PCA9685_ADDRESS = 0x40;
 constexpr uint16_t PCA9685_PWM_FREQ_HZ = 50;
 constexpr uint8_t PCA9685_CHANNEL_COUNT = 16;
 
-// レーザー側のWireとは別のESP32 I2Cコントローラを使用する。
+// LaserSensor用Wireとは独立したServo専用I2C controllerを使用する。
 TwoWire servoWire(1);
 
 Adafruit_PWMServoDriver servoDriver(
@@ -27,6 +27,7 @@ bool driverInitialized = false;
 
 uint16_t microsecondsToPcaTicks(uint16_t pulseUs)
 {
+  // 50Hzの1周期20msを4096分割したPCA9685 tick数へ変換する。
   const uint32_t periodUs =
     1000000UL / PCA9685_PWM_FREQ_HZ;
 
@@ -44,7 +45,7 @@ uint16_t microsecondsToPcaTicks(uint16_t pulseUs)
 bool probePca9685()
 {
   Serial.println(
-    "[PCA9685] PCA9685 0x40をprobeします"
+    "[PCA9685] address 0x40の応答を確認します"
   );
 
   servoWire.beginTransmission(PCA9685_ADDRESS);
@@ -53,7 +54,7 @@ bool probePca9685()
     servoWire.endTransmission(true);
 
   Serial.print(
-    "[PCA9685] PCA9685 probe result="
+    "[PCA9685] 接続確認結果 error="
   );
   Serial.println(result);
 
@@ -90,39 +91,39 @@ bool initializeDriver()
         SERVO_I2C_CLOCK_HZ
       )) {
     Serial.println(
-      "[PCA9685] ★ 専用I2C初期化失敗"
+      "[PCA9685] Servo専用I2Cの初期化に失敗しました"
     );
     return false;
   }
 
   Serial.println(
-    "[PCA9685] 専用I2C初期化成功"
+    "[PCA9685] Servo専用I2Cの初期化が完了しました"
   );
 
   if (!probePca9685()) {
     Serial.println(
-      "[PCA9685] ★ PCA9685が見つかりません"
+      "[PCA9685] deviceから応答がありません"
     );
     return false;
   }
 
   Serial.println(
-    "[PCA9685] PCA9685検出成功"
+    "[PCA9685] deviceの接続を確認しました"
   );
 
   Serial.println(
-    "[PCA9685] servoDriver.begin()"
+    "[PCA9685] device初期化を開始します"
   );
 
   if (!servoDriver.begin()) {
     Serial.println(
-      "[PCA9685] ★ PCA9685 begin失敗"
+      "[PCA9685] device初期化に失敗しました"
     );
     return false;
   }
 
   Serial.println(
-    "[PCA9685] PWM周波数=50Hz設定"
+    "[PCA9685] PWM周波数を50Hzに設定します"
   );
 
   servoDriver.setPWMFreq(
@@ -139,12 +140,12 @@ bool initializeDriver()
 bool pca9685DriverBegin()
 {
   Serial.println(
-    "[PCA9685] 初期化開始"
+    "[PCA9685] 初期化を開始します"
   );
 
   if (!initializeDriver()) {
     Serial.println(
-      "[PCA9685] ★ 初期化失敗"
+      "[PCA9685] 初期化に失敗しました"
     );
     return false;
   }
@@ -154,7 +155,7 @@ bool pca9685DriverBegin()
   driverInitialized = true;
 
   Serial.println(
-    "[PCA9685] PCA9685準備完了"
+    "[PCA9685] 初期化が完了しました"
   );
 
   return true;
@@ -167,14 +168,14 @@ bool pca9685DriverSetPulseUs(
 {
   if (!driverInitialized) {
     Serial.println(
-      "[PCA9685] 未初期化"
+      "[PCA9685] 未初期化のためPWMを出力できません"
     );
     return false;
   }
 
   if (channel >= PCA9685_CHANNEL_COUNT) {
     Serial.println(
-      "[PCA9685] 不正なCH"
+      "[PCA9685] channelが範囲外です"
     );
     return false;
   }
@@ -189,11 +190,11 @@ bool pca9685DriverSetPulseUs(
       ticks
     );
 
-  Serial.print("[PCA9685] CH=");
+  Serial.print("[PCA9685] PWM出力 channel=");
   Serial.print(channel);
-  Serial.print(" pulse=");
+  Serial.print(" pulse[us]=");
   Serial.print(pulseUs);
-  Serial.print("us ticks=");
+  Serial.print(" ticks=");
   Serial.print(ticks);
   Serial.print(" result=");
   Serial.println(result);
@@ -251,7 +252,7 @@ bool pca9685DriverReinitialize()
 
   if (!initializeDriver()) {
     Serial.println(
-      "[PCA9685] ★ PCA9685復旧失敗"
+      "[PCA9685] 再初期化に失敗しました"
     );
     return false;
   }
@@ -279,7 +280,7 @@ bool pca9685DriverReinitialize()
   }
 
   Serial.println(
-    "[PCA9685] PCA9685状態復旧完了"
+    "[PCA9685] 最後のPWM出力状態を復元しました"
   );
 
   return true;
