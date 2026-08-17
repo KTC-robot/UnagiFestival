@@ -26,7 +26,7 @@ def setup_logger() -> logging.Logger:
         Controller処理で共有するlogger。
 
     About:
-        console出力とlogs配下の実行別ファイル出力を設定する。
+        console出力とプロジェクトrootのlogs配下への実行別ファイル出力を設定する。
         既にhandlerが登録済みの場合は重複登録しない。
     """
     logger = logging.getLogger("unagi_log")
@@ -37,11 +37,11 @@ def setup_logger() -> logging.Logger:
         return logger
 
     timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d_%H%M%S")
-    logs_dir = Path("logs")
+    logs_dir = Path(__file__).resolve().parents[4] / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_filename = logs_dir / f"ps_controller_{timestamp}.log"
 
-    file_handler = logging.FileHandler(log_filename)
+    file_handler = logging.FileHandler(log_filename, encoding="utf-8")
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
     file_handler.setFormatter(formatter)
 
