@@ -12,11 +12,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from unagifestival.tools.ps_controller import im_wireless as imw
-from unagifestival.tools.ps_controller.config import IM920_CMD_MAX_LEN, SLAVE_ADR
-from unagifestival.tools.ps_controller.models import DriveCommand
-from unagifestival.tools.ps_controller.robot_api import RobotApi
-from unagifestival.tools.ps_controller.transport import Im920Transport
+from unagifestival.tools.ps_controller.im920 import (
+    IM920Client,
+    create_im920_client,
+)
+from unagifestival.tools.ps_controller.im920.model import DriveCommand
 
 type GainSetting = tuple[int, float]
 type TuningResult = dict[str, int | str]
@@ -36,7 +36,6 @@ GAIN_ACK_ATTEMPT_TIMEOUT_SEC = 0.5
 GAIN_ACK_RETRY_COUNT = 3
 GAIN_TX_TURNAROUND_GUARD_SEC = 0.15
 RESULT_ACK_SETTLE_SEC = 0.7
-HEX_BYTE_CHAR_COUNT = 2
 WHEEL_COUNT = 4
 TUNING_DURATION_UNIT_MS = 100
 TUNING_DURATION_MAX_MS = 10_000
@@ -192,29 +191,6 @@ def build_drive_command(direction: str, speed: int) -> DriveCommand:
     return DriveCommand(vx=vx_sign * speed, vy=vy_sign * speed, wz=wz_sign * speed)
 
 
-def decode_im920_text(raw: str) -> str:
-    """1つのIM920受信フレームを完全なASCII payloadへ戻す.
-
-    奇数桁hexやASCIIでないpayloadはpartial frameとして空文字を返す.
-
-    Args:
-        raw: node情報とhex payloadを含むIM920受信文字列.
-
-    Returns:
-        復号したpayload。完全に復号できない場合は空文字.
-    """
-    normalized = "".join(chr(ord(character) & 0x7F) for character in raw).strip()
-    if ":" not in normalized:
-        return ""
-    payload = re.sub(r"[^0-9A-Fa-f]", "", normalized.split(":", 1)[1])
-    if len(payload) < HEX_BYTE_CHAR_COUNT or len(payload) % HEX_BYTE_CHAR_COUNT:
-        return ""
-    try:
-        return bytes.fromhex(payload).decode("ascii")
-    except (UnicodeDecodeError, ValueError):
-        return ""
-
-
 def parse_tuning_result(text: str) -> TuningResult | None:
     """`WG<wheel>,rpm,samples[,stddev]`を試験結果へ変換する.
 
@@ -285,23 +261,20 @@ def calculate_recommendations(
 
 
 def read_decoded_frame(
-    transport: Im920Transport,
+    client: IM920Client,
     logger: logging.Logger,
 ) -> str:
     """IM920から最大1フレームを読み、debugログ付きで復号する."""
-    raw = transport.read()
-    if not raw:
+    response = client.poll()
+    if response is None:
         return ""
-    logger.debug("[RX RAW] %r", raw)
-    text = decode_im920_text(raw)
-    if text:
-        logger.debug("[RX DECODED] %s", text)
-    return text
+    logger.debug("[RX RAW] %r", response.raw)
+    logger.debug("[RX DECODED] %s", response.text)
+    return response.text
 
 
 def set_and_confirm_wheel_gains(
-    robot: RobotApi,
-    transport: Im920Transport,
+    client: IM920Client,
     logger: logging.Logger,
     direction: int,
     gains: dict[int, float],
@@ -313,8 +286,7 @@ def set_and_confirm_wheel_gains(
     wheel、wire scale丸め後のgainが一致するWGSだけをACKとして扱う.
 
     Args:
-        robot: wheel gain設定API.
-        transport: WGSを受信するIM920 transport.
+        client: wheel gain送信とWGS受信を行うIM920 Facade.
         logger: debugログ出力先.
         direction: ESP32 wire protocol上の方向番号.
         gains: 0-3の4wheelすべてを含むgain.
@@ -339,10 +311,8 @@ def set_and_confirm_wheel_gains(
                 attempt + 1,
             )
 
-            robot.set_wheel_gain(
-                direction,
-                wheel,
-                gain,
+            client.send(
+                client.commands.set_wheel_gain(direction, wheel, gain)
             )
 
             deadline = min(
@@ -352,7 +322,7 @@ def set_and_confirm_wheel_gains(
 
             while time.monotonic() < deadline:
                 text = read_decoded_frame(
-                    transport,
+                    client,
                     logger,
                 )
 
@@ -388,8 +358,7 @@ def set_and_confirm_wheel_gains(
 
 
 def collect_tuning_results(
-    robot: RobotApi,
-    transport: Im920Transport,
+    client: IM920Client,
     logger: logging.Logger,
     duration_ms: int,
     result_timeout_ms: int,
@@ -398,8 +367,7 @@ def collect_tuning_results(
     """走行中のkeepaliveを維持しながらWG0-WG3とWDを回収する.
 
     Args:
-        robot: keepalive送信用API.
-        transport: 結果受信用transport.
+        client: keepalive/ACK送信と結果受信を行うIM920 Facade.
         logger: debugログ出力先.
         duration_ms: ESP32側の試験時間[ms].
         result_timeout_ms: 試験終了後の結果待ち時間[ms].
@@ -420,10 +388,10 @@ def collect_tuning_results(
     while time.monotonic() < deadline:
         now = time.monotonic()
         if now < tuning_end and now - last_keepalive >= keepalive_interval:
-            robot.gain_tuning_keepalive()
+            client.send(client.commands.gain_tuning_keepalive())
             last_keepalive = now
 
-        text = read_decoded_frame(transport, logger)
+        text = read_decoded_frame(client, logger)
         result = parse_tuning_result(text)
         if result is not None:
             wheel = int(result["wheel"])
@@ -435,12 +403,12 @@ def collect_tuning_results(
                 result["mean_rpm"],
                 result["sample_count"],
             )
-            robot.ack_gain_tuning_result(wheel)
+            client.send(client.commands.ack_gain_tuning_result(wheel))
             logger.debug("[RESULT ACK TX] WG%s", wheel)
         elif text == "WD":
             done_received = True
             logger.debug("[RX DONE] WD")
-            robot.ack_gain_tuning_result(WHEEL_COUNT)
+            client.send(client.commands.ack_gain_tuning_result(WHEEL_COUNT))
             logger.debug("[RESULT ACK TX] WD")
 
         # WDだけでは成功にせず、wheel番号をsequenceとして完全性を確認する。
@@ -598,13 +566,10 @@ def main() -> None:
     results: dict[int, TuningResult] = {}
     csv_written = False
 
-    im920 = imw.IMWireClass(SLAVE_ADR)
-    transport = Im920Transport(im920, IM920_CMD_MAX_LEN, lambda: None, logger)
-    robot = RobotApi(transport)
+    client = create_im920_client(logger=logger)
     try:
         set_and_confirm_wheel_gains(
-            robot,
-            transport,
+            client,
             logger,
             DIRECTION_INDEX[args.direction],
             gain_map,
@@ -612,10 +577,9 @@ def main() -> None:
 
         print(f"試験開始: {args.direction} speed={args.speed} duration={args.duration_ms}ms")
         logger.debug("[TUNE START] command=%s duration_ms=%s", command, args.duration_ms)
-        robot.start_gain_tuning(command, args.duration_ms)
+        client.send(client.commands.start_gain_tuning(command, args.duration_ms))
         results, done_received = collect_tuning_results(
-            robot,
-            transport,
+            client,
             logger,
             args.duration_ms,
             args.result_timeout_ms,
@@ -664,9 +628,9 @@ def main() -> None:
     finally:
         print("STOP送信")
         try:
-            robot.stop()
+            client.send(client.commands.stop())
         finally:
-            transport.cleanup()
+            client.close()
 
 
 if __name__ == "__main__":

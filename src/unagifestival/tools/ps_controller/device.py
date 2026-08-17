@@ -6,16 +6,19 @@ from typing import Final
 
 from evdev import AbsInfo, InputDevice, InputEvent, ecodes, list_devices
 
-from unagifestival.tools.ps_controller.enums import (
+from unagifestival.tools.ps_controller.enum import (
     AxisCode,
-    AxisInputEvent,
     ButtonCode,
-    ButtonEvent,
     ButtonState,
-    ControllerInputEvent,
     EventType,
 )
-from unagifestival.tools.ps_controller.models import AxisInfo, AxisInfoMap
+from unagifestival.tools.ps_controller.model import (
+    AxisInfo,
+    AxisInfoMap,
+    AxisInputEvent,
+    ButtonEvent,
+    ControllerInputEvent,
+)
 
 logger = logging.getLogger("unagi_log")
 
