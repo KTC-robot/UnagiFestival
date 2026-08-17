@@ -8,7 +8,6 @@ from unagifestival.tools.ps_controller.im920.constants import (
 )
 from unagifestival.tools.ps_controller.im920.decoder import decode_frame
 from unagifestival.tools.ps_controller.im920.encoder import encode_command
-from unagifestival.tools.ps_controller.im920.factory import CommandFactory
 from unagifestival.tools.ps_controller.im920.model import (
     IM920Command,
     IM920Device,
@@ -20,8 +19,6 @@ from unagifestival.tools.ps_controller.im920.transmitter import IM920Transmitter
 
 class IM920ClientProtocol(Protocol):
     """Handlerが依存するIM920 Facade interface."""
-
-    commands: CommandFactory
 
     def send(self, command: IM920Command) -> None: ...
 
@@ -48,7 +45,6 @@ class IM920Client:
             self._logger,
         )
         self._receiver = IM920Receiver(device)
-        self.commands = CommandFactory()
 
     def send(self, command: IM920Command) -> None:
         """意味CommandをencodeしてIM920-HATへ送信する."""

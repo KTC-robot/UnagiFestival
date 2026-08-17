@@ -21,6 +21,7 @@ from unagifestival.tools.ps_controller.im920.client import (
     IM920ClientProtocol,
     create_im920_client,
 )
+from unagifestival.tools.ps_controller.im920.factory import CommandFactory
 from unagifestival.tools.ps_controller.im920.model import DriveCommand
 from unagifestival.tools.ps_controller.model import (
     AxisInfo,
@@ -42,25 +43,39 @@ class Handler:
         servo_mapper: ServoMapper | None = None,
     ) -> None:
         validate_handler_config()
-        self.im920 = im920 or create_im920_client(logger=logger)
+        self.im920 = im920
+        self.commands = CommandFactory()
         self.servo_mapper = servo_mapper or ServoMapper()
 
     def enter(self) -> None:
         """Handlerを開始し、設定されていればサーボhome指令を送る."""
+        if self.im920 is None:
+            self.im920 = create_im920_client(logger=logger)
+
+        im920 = self._get_im920()
         logger.info("[ROBOT] PS5 Controller -> IM920-HAT sender start")
         commands = self.servo_mapper.startup_commands()
         for index, command in enumerate(commands):
-            self.im920.send(command)
+            im920.send(command)
             if index < len(commands) - 1:
                 time.sleep(self.servo_mapper.startup_interval_seconds)
 
     def exit(self) -> None:
         """IM920-HATのresourceを解放する."""
         logger.info("[ROBOT] 制御終了")
+        if self.im920 is None:
+            return
         try:
             self.im920.close()
         except Exception:  # noqa: BLE001
             logger.warning("[ROBOT] IM920 cleanup failed", exc_info=True)
+
+    def _get_im920(self) -> IM920ClientProtocol:
+        """初期化済みのIM920 Clientを返す."""
+        if self.im920 is None:
+            msg = "Handler.enter() must be called before use"
+            raise RuntimeError(msg)
+        return self.im920
 
     @staticmethod
     def _normalize_axis(value: int, axis_info: AxisInfo | None) -> int:
@@ -112,7 +127,7 @@ class Handler:
             vx = int(vx * SLOW_MODE_MULTIPLIER)
             vy = int(vy * SLOW_MODE_MULTIPLIER)
             wz = int(wz * SLOW_MODE_MULTIPLIER)
-        return self.im920.commands.drive(vx, vy, wz)
+        return self.commands.drive(vx, vy, wz)
 
     def handle_axis(self, event: AxisInputEvent, state: ControllerState) -> None:
         """軸状態を更新し、DPAD上下を全サーボ操作へ変換する."""
@@ -122,11 +137,11 @@ class Handler:
         if event.value == -1:
             command = self.servo_mapper.open_all()
             logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", command.angle)
-            self.im920.send(command)
+            self._get_im920().send(command)
         elif event.value == 1:
             command = self.servo_mapper.close_all()
             logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", command.angle)
-            self.im920.send(command)
+            self._get_im920().send(command)
 
     def handle_button(self, event: ButtonEvent) -> None:
         """ボタンを足回り操作またはサーボCommandへ変換して送信する."""
@@ -138,17 +153,17 @@ class Handler:
         if event.state is ButtonState.PRESSED:
             command = None
             if event.code is ButtonCode.CROSS_BTN:
-                command = self.im920.commands.stop()
+                command = self.commands.stop()
             elif event.code is ButtonCode.PS_BTN:
-                command = self.im920.commands.emergency_stop()
+                command = self.commands.emergency_stop()
             elif event.code is ButtonCode.L1_BTN:
-                command = self.im920.commands.change_power(-DRIVE_POWER_STEP)
+                command = self.commands.change_power(-DRIVE_POWER_STEP)
             elif event.code is ButtonCode.R1_BTN:
-                command = self.im920.commands.change_power(DRIVE_POWER_STEP)
+                command = self.commands.change_power(DRIVE_POWER_STEP)
             elif event.code is ButtonCode.CIRCLE_BTN:
-                command = self.im920.commands.reset_step_assist()
+                command = self.commands.reset_step_assist()
             if command is not None:
-                self.im920.send(command)
+                self._get_im920().send(command)
 
         for servo_command in self.servo_mapper.map_button(event):
             logger.info(
@@ -156,7 +171,7 @@ class Handler:
                 servo_command.channel,
                 servo_command.angle,
             )
-            self.im920.send(servo_command)
+            self._get_im920().send(servo_command)
 
     def tick(
         self,
@@ -165,11 +180,12 @@ class Handler:
         last_send: float,
     ) -> float:
         """responseをpollし、設定周期で最新走行Commandを送信する."""
-        response = self.im920.poll()
+        im920 = self._get_im920()
+        response = im920.poll()
         if response is not None:
             logger.info("[ROBOT] ESP32 TEXT <- %s", response.text)
             print("ESP32 <-", response.text)  # noqa: T201
         if now - last_send < (1.0 / DRIVE_HZ):
             return last_send
-        self.im920.send(self._make_drive_command(state))
+        im920.send(self._make_drive_command(state))
         return now

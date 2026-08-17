@@ -16,6 +16,7 @@ from unagifestival.tools.ps_controller.im920 import (
     IM920Client,
     create_im920_client,
 )
+from unagifestival.tools.ps_controller.im920.factory import CommandFactory
 from unagifestival.tools.ps_controller.im920.model import DriveCommand
 
 type GainSetting = tuple[int, float]
@@ -275,6 +276,7 @@ def read_decoded_frame(
 
 def set_and_confirm_wheel_gains(
     client: IM920Client,
+    commands: CommandFactory,
     logger: logging.Logger,
     direction: int,
     gains: dict[int, float],
@@ -287,6 +289,7 @@ def set_and_confirm_wheel_gains(
 
     Args:
         client: wheel gain送信とWGS受信を行うIM920 Facade.
+        commands: gain設定Commandを生成するFactory.
         logger: debugログ出力先.
         direction: ESP32 wire protocol上の方向番号.
         gains: 0-3の4wheelすべてを含むgain.
@@ -311,9 +314,7 @@ def set_and_confirm_wheel_gains(
                 attempt + 1,
             )
 
-            client.send(
-                client.commands.set_wheel_gain(direction, wheel, gain)
-            )
+            client.send(commands.set_wheel_gain(direction, wheel, gain))
 
             deadline = min(
                 overall_deadline,
@@ -359,6 +360,7 @@ def set_and_confirm_wheel_gains(
 
 def collect_tuning_results(
     client: IM920Client,
+    commands: CommandFactory,
     logger: logging.Logger,
     duration_ms: int,
     result_timeout_ms: int,
@@ -368,6 +370,7 @@ def collect_tuning_results(
 
     Args:
         client: keepalive/ACK送信と結果受信を行うIM920 Facade.
+        commands: keepaliveと結果ACK Commandを生成するFactory.
         logger: debugログ出力先.
         duration_ms: ESP32側の試験時間[ms].
         result_timeout_ms: 試験終了後の結果待ち時間[ms].
@@ -388,7 +391,7 @@ def collect_tuning_results(
     while time.monotonic() < deadline:
         now = time.monotonic()
         if now < tuning_end and now - last_keepalive >= keepalive_interval:
-            client.send(client.commands.gain_tuning_keepalive())
+            client.send(commands.gain_tuning_keepalive())
             last_keepalive = now
 
         text = read_decoded_frame(client, logger)
@@ -403,12 +406,12 @@ def collect_tuning_results(
                 result["mean_rpm"],
                 result["sample_count"],
             )
-            client.send(client.commands.ack_gain_tuning_result(wheel))
+            client.send(commands.ack_gain_tuning_result(wheel))
             logger.debug("[RESULT ACK TX] WG%s", wheel)
         elif text == "WD":
             done_received = True
             logger.debug("[RX DONE] WD")
-            client.send(client.commands.ack_gain_tuning_result(WHEEL_COUNT))
+            client.send(commands.ack_gain_tuning_result(WHEEL_COUNT))
             logger.debug("[RESULT ACK TX] WD")
 
         # WDだけでは成功にせず、wheel番号をsequenceとして完全性を確認する。
@@ -567,9 +570,11 @@ def main() -> None:
     csv_written = False
 
     client = create_im920_client(logger=logger)
+    commands = CommandFactory()
     try:
         set_and_confirm_wheel_gains(
             client,
+            commands,
             logger,
             DIRECTION_INDEX[args.direction],
             gain_map,
@@ -577,9 +582,10 @@ def main() -> None:
 
         print(f"試験開始: {args.direction} speed={args.speed} duration={args.duration_ms}ms")
         logger.debug("[TUNE START] command=%s duration_ms=%s", command, args.duration_ms)
-        client.send(client.commands.start_gain_tuning(command, args.duration_ms))
+        client.send(commands.start_gain_tuning(command, args.duration_ms))
         results, done_received = collect_tuning_results(
             client,
+            commands,
             logger,
             args.duration_ms,
             args.result_timeout_ms,
@@ -628,7 +634,7 @@ def main() -> None:
     finally:
         print("STOP送信")
         try:
-            client.send(client.commands.stop())
+            client.send(commands.stop())
         finally:
             client.close()
 
