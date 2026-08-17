@@ -1,12 +1,7 @@
-from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import Self
 
 from evdev import ecodes
-
-# ============================================================
-# Controller event types
-# ============================================================
 
 
 class EventType(IntEnum):
@@ -30,19 +25,10 @@ class AxisCode(Enum):
 
     LEFT_STICK_X = (ecodes.ABS_X, AxisType.STICK)
     LEFT_STICK_Y = (ecodes.ABS_Y, AxisType.STICK)
-
     RIGHT_STICK_X = (ecodes.ABS_RX, AxisType.STICK)
     RIGHT_STICK_Y = (ecodes.ABS_RY, AxisType.STICK)
-
-    LEFT_TRIGGER_L2 = (
-        getattr(ecodes, "ABS_Z", 2),
-        AxisType.TRIGGER,
-    )
-    RIGHT_TRIGGER_R2 = (
-        getattr(ecodes, "ABS_RZ", 5),
-        AxisType.TRIGGER,
-    )
-
+    LEFT_TRIGGER_L2 = (getattr(ecodes, "ABS_Z", 2), AxisType.TRIGGER)
+    RIGHT_TRIGGER_R2 = (getattr(ecodes, "ABS_RZ", 5), AxisType.TRIGGER)
     DPAD_X = (ecodes.ABS_HAT0X, AxisType.DPAD)
     DPAD_Y = (ecodes.ABS_HAT0Y, AxisType.DPAD)
 
@@ -52,24 +38,8 @@ class AxisCode(Enum):
 
     @classmethod
     def get_by_code(cls, code: int) -> Self | None:
-        for axis in cls:
-            if axis.code == code:
-                return axis
-
-        return None
-
-
-@dataclass(frozen=True)
-class AxisInputEvent:
-    """軸種別と現在値を組み合わせた入力イベント."""
-
-    code: AxisCode
-    value: int
-
-
-# ============================================================
-# PS5 button table
-# ============================================================
+        """Linux evdevコードに対応する軸を返す."""
+        return next((axis for axis in cls if axis.code == code), None)
 
 
 class ButtonState(IntEnum):
@@ -104,24 +74,10 @@ class ButtonCode(Enum):
 
     @property
     def display_name(self) -> str:
-        """ログ表示用の名前。例: SQUARE_BTN -> SQUARE."""
+        """ログ表示用のボタン名を返す."""
         return self.name.removesuffix("_BTN")
 
     @classmethod
     def get_by_code(cls, code: int) -> Self | None:
-        """Linuxのevdevコードからボタンを取得する."""
-        for button in cls:
-            if button.code == code:
-                return button
-
-        return None
-
-@dataclass(frozen=True)
-class ButtonEvent:
-    """ボタン種別と押下状態を組み合わせた入力イベント."""
-
-    code: ButtonCode
-    state: ButtonState
-
-
-type ControllerInputEvent = AxisInputEvent | ButtonEvent
+        """Linux evdevコードに対応するボタンを返す."""
+        return next((button for button in cls if button.code == code), None)

@@ -7,9 +7,13 @@ from datetime import UTC, datetime
 from unagifestival.tools.ps_controller.device import (
     find_controller,
 )
-from unagifestival.tools.ps_controller.enums import AxisInputEvent, ButtonEvent
-from unagifestival.tools.ps_controller.handler import RobotHandler
-from unagifestival.tools.ps_controller.models import AxisValueMap, ControllerState
+from unagifestival.tools.ps_controller.handler import Handler
+from unagifestival.tools.ps_controller.model import (
+    AxisInputEvent,
+    AxisValueMap,
+    ButtonEvent,
+    ControllerState,
+)
 
 
 def setup_logger() -> logging.Logger:
@@ -62,7 +66,7 @@ def main() -> None:
 
     state = ControllerState(axis_values=axis_values, axis_info=axis_info)
 
-    handler = RobotHandler()
+    handler = Handler()
     handler.enter()
 
     last_send = 0.0
