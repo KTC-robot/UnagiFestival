@@ -4,7 +4,6 @@
 #include "../i2c/i2c_bus.hpp"
 #include "laser_sensor_device.hpp"
 #include "laser_sensor_state.hpp"
-#include "servo_ctrl/servo_ctrl.h"
 
 #include <Arduino.h>
 
@@ -97,8 +96,6 @@ void recoverI2cBusIfRequired() {
 
   Serial.println("I2C BUS RESTART SUCCESS");
 
-  const bool servoRecovered = servoCtrlRestoreAfterI2cRecovery();
-
   markAllSensorsUnavailable();
 
   const uint32_t now = millis();
@@ -121,7 +118,7 @@ void recoverI2cBusIfRequired() {
     }
   }
 
-  if (servoRecovered && allSensorsRecovered) {
+  if (allSensorsRecovered) {
     Serial.println("I2C DEVICE RECOVERY SUCCESS");
   } else {
     Serial.println("I2C DEVICE RECOVERY PARTIAL");
