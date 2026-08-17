@@ -21,6 +21,8 @@ bool setServoAngle(uint8_t channel, uint8_t requestedAngle) {
     return false;
   }
 
+  // 論理angleをchannel固有範囲へ制限し、reverse設定後の物理angleを
+  // pulse幅へ線形変換して、mapping先のPCA9685 channelへ出力する。
   const uint8_t angle = constrain(requestedAngle, minimum, maximum);
   uint8_t physicalAngle = angle;
 
@@ -45,13 +47,13 @@ bool setServoAngle(uint8_t channel, uint8_t requestedAngle) {
     return false;
   }
 
-  Serial.print("SERVO CH=");
+  Serial.print("[SERVO] 論理channel=");
   Serial.print(channel);
-  Serial.print(" PCA_CH=");
+  Serial.print(" PCA9685 channel=");
   Serial.print(SERVO_PCA_CHANNEL[channel]);
-  Serial.print(" ANGLE=");
+  Serial.print(" angle[度]=");
   Serial.print(angle);
-  Serial.print(" PULSE_US=");
+  Serial.print(" pulse[us]=");
   Serial.println(pulseUs);
 
   return true;
@@ -75,18 +77,18 @@ bool servoCtrlSetAngle(uint8_t channel, uint8_t angle) {
 bool servoCtrlSetAllAngles(uint8_t angle) {
   if (angle > 180) return false;
 
-  Serial.print("[SERVO][ALL] ANGLE=");
+  Serial.print("[SERVO] 全channel共通angle[度]=");
   Serial.println(angle);
 
   // 個別packetと同じ角度制限・反転・pulse変換を全論理CHへ適用する。
   bool succeeded = true;
   for (uint8_t channel = 0; channel < SERVO_CHANNEL_COUNT; ++channel) {
-    Serial.print("[SERVO][ALL] CH=");
+    Serial.print("[SERVO] 一括設定 channel=");
     Serial.print(channel);
     if (setServoAngle(channel, angle)) {
-      Serial.println(" SUCCESS");
+      Serial.println(" 成功");
     } else {
-      Serial.println(" FAILED");
+      Serial.println(" 失敗");
       succeeded = false;
     }
   }

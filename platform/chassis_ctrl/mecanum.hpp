@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file mecanum.hpp
+ * @brief 車体の前後・横・旋回指令を4輪の出力へ変換する純粋計算を定義する。
+ */
+
 #include "chassis_ctrl/constants.hpp"
 
 /**

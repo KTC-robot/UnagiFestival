@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file decoder.hpp
+ * @brief 16進文字列のwire payloadを意味的なCommandへ復号する。
+ */
+
 #include <string_view>
 
 #include "command/command.hpp"

@@ -44,6 +44,7 @@ int motorIndexFromFeedbackId(uint32_t identifier) {
 }
 
 bool sendCurrentFrame() {
+  // 4台分の符号付き電流指令をbig endianで1つのCAN frameへ詰める。
   if (!canReady) {
     return false;
   }
@@ -68,7 +69,7 @@ bool sendCurrentFrame() {
 
     if (now - lastCanErrorPrintMs >= 1000) {
       lastCanErrorPrintMs = now;
-      Serial.print("C620 CAN transmit failed: ");
+      Serial.print("[C620] CAN frameの送信に失敗しました error=");
       Serial.println(static_cast<int>(result));
     }
 
@@ -80,6 +81,8 @@ bool sendCurrentFrame() {
 }
 
 void handleFeedback(const twai_message_t& message) {
+  // feedback IDからmotorを特定し、回転数・電流・温度・角度と
+  // 最終受信時刻を保存する。Chassisはこの時刻でfreshnessを判断する。
   if (message.data_length_code < 7) {
     return;
   }
@@ -127,7 +130,7 @@ bool c620DriverBegin() {
   );
 
   if (result != ESP_OK) {
-    Serial.print("TWAI driver install failed: ");
+    Serial.print("[C620] TWAI driverのinstallに失敗しました error=");
     Serial.println(static_cast<int>(result));
     return false;
   }
@@ -135,7 +138,7 @@ bool c620DriverBegin() {
   result = twai_start();
 
   if (result != ESP_OK) {
-    Serial.print("TWAI start failed: ");
+    Serial.print("[C620] TWAIの開始に失敗しました error=");
     Serial.println(static_cast<int>(result));
     twai_driver_uninstall();
     return false;
@@ -144,7 +147,7 @@ bool c620DriverBegin() {
   canReady = true;
   lastCanTxUs = micros();
 
-  Serial.println("TWAI/CAN ready: 1 Mbps, TX=GPIO4, RX=GPIO5");
+  Serial.println("[C620] CANの初期化が完了しました 1Mbps TX=GPIO4 RX=GPIO5");
   return true;
 }
 

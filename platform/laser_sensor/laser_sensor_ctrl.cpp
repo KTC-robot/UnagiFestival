@@ -18,6 +18,7 @@ uint32_t lastSensorReadMs = 0;
 int nextSensorToRead = 0;
 
 bool disableAllTcaChannels() {
+  // recovery後に以前のchannel選択を残さず、既知の状態から再初期化する。
   I2cBusLockGuard lock;
   return lock.locked() && i2cBusWriteByteLocked(
     LASER_SENSOR_TCA9548A_ADDRESS,
@@ -46,7 +47,7 @@ void invalidateStaleSensorReadings() {
     if (!sensorConfigured(index) || !sensorAvailable(index)) continue;
     if (!sensorHasValue(index) ||
         now - sensorLastGoodMs(index) <= LASER_SENSOR_STALE_MS) continue;
-    Serial.print("VL53L0X stale: ");
+    Serial.print("[LASER] 測距値がstaleになりました sensor=");
     Serial.println(LASER_SENSOR_NAMES[index]);
     invalidateSensorReading(index);
   }
@@ -60,11 +61,11 @@ void retryMissingSensorsIfDue() {
           LASER_SENSOR_REINIT_INTERVAL_MS) continue;
 
     lastInitializationAttemptMs[index] = now;
-    Serial.print("VL53L0X retry: ");
+    Serial.print("[LASER] 利用できないセンサーを再初期化します sensor=");
     Serial.println(LASER_SENSOR_NAMES[index]);
     Serial.print(initializeOneSensor(index)
-      ? "VL53L0X retry success: "
-      : "VL53L0X retry failed: ");
+      ? "[LASER] 再初期化に成功しました sensor="
+      : "[LASER] 再初期化に失敗しました sensor=");
     Serial.println(LASER_SENSOR_NAMES[index]);
   }
 }
@@ -72,18 +73,20 @@ void retryMissingSensorsIfDue() {
 void recoverI2cBusIfRequired() {
   if (!busRecoveryRequired()) return;
   clearBusRecoveryRequest();
-  Serial.println("I2C BUS RECOVERY START");
+  Serial.println("[LASER] I2C Bus recoveryを開始します");
   if (!i2cBusRestart()) {
-    Serial.println("I2C BUS RECOVERY FAILED");
+    Serial.println("[LASER] I2C Busの再初期化に失敗しました");
     return;
   }
 
-  Serial.println("I2C BUS RESTART SUCCESS");
+  Serial.println("[LASER] I2C Busの再初期化に成功しました");
+  // Bus再起動前の接続状態は信用できないため、全センサーを一旦unavailableにする。
+  // その後TCAを未選択状態へ戻し、各VL53L0Xを順番に初期化し直す。
   markAllSensorsUnavailable();
   const uint32_t now = millis();
   const bool tcaReady = disableAllTcaChannels();
   bool allSensorsRecovered = tcaReady;
-  if (!tcaReady) Serial.println("TCA9548A recovery failed");
+  if (!tcaReady) Serial.println("[LASER] TCA9548Aのchannel解除に失敗しました");
 
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     if (!sensorConfigured(index)) continue;
@@ -93,8 +96,8 @@ void recoverI2cBusIfRequired() {
     }
   }
   Serial.println(allSensorsRecovered
-    ? "I2C DEVICE RECOVERY SUCCESS"
-    : "I2C DEVICE RECOVERY PARTIAL");
+    ? "[LASER] 全センサーのrecoveryに成功しました"
+    : "[LASER] 一部センサーのrecoveryに失敗しました");
 }
 
 void initializeAllSensors() {
@@ -108,10 +111,10 @@ void initializeAllSensors() {
   clearAllSensorStates();
   markAllSensorsUnavailable();
   if (!disableAllTcaChannels()) {
-    Serial.println("TCA9548A 初期化失敗");
+    Serial.println("[LASER] TCA9548Aの初期化に失敗しました");
     return;
   }
-  Serial.println("TCA9548A 接続成功");
+  Serial.println("[LASER] TCA9548Aの接続を確認しました");
   for (int index = 0; index < LASER_SENSOR_COUNT; ++index) {
     if (sensorConfigured(index)) initializeOneSensor(index);
   }
@@ -125,14 +128,16 @@ void updateSensors() {
 }
 
 void laserSensorTask(void*) {
+  // Ctrlが測距scheduleとrecoveryを管理し、Deviceが実機へアクセスする。
+  // 測距結果とfreshnessはStateへ保存し、他moduleから安全に参照できるようにする。
   initializeAllSensors();
 
   const int configuredCount = configuredSensorCount();
   const int connectedCount = connectedSensorCount();
 
-  Serial.print("VL53L0X connected: ");
+  Serial.print("[LASER] 接続センサー数=");
   Serial.print(connectedCount);
-  Serial.print(" / ");
+  Serial.print(" / 設定数=");
   Serial.println(configuredCount);
 
   for (;;) {
@@ -159,11 +164,11 @@ bool laserSensorCtrlBegin() {
 
   if (result != pdPASS) {
     laserSensorTaskHandle = nullptr;
-    Serial.println("VL53L0X task start failed");
+    Serial.println("[LASER] 測距taskの起動に失敗しました");
     return false;
   }
 
-  Serial.println("VL53L0X task started");
+  Serial.println("[LASER] 測距taskを起動しました");
   return true;
 }
 

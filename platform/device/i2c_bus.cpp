@@ -40,13 +40,13 @@ bool beginWireUnlocked(bool restart) {
   );
 
   if (!result) {
-    Serial.println("I2C初期化失敗");
+    Serial.println("[I2C] LaserSensor用Busの初期化に失敗しました");
     return false;
   }
 
   applySettingsUnlocked();
 
-  Serial.print("I2C初期化成功 SDA=");
+  Serial.print("[I2C] LaserSensor用Busの初期化が完了しました SDA=");
   Serial.print(LASER_SENSOR_I2C_SDA_PIN);
   Serial.print(" SCL=");
   Serial.print(LASER_SENSOR_I2C_SCL_PIN);
@@ -107,7 +107,7 @@ bool i2cBusRestart() {
     return false;
   }
 
-  Serial.println("I2Cバスを再初期化します");
+  Serial.println("[I2C] LaserSensor用Busを再初期化します");
   return beginWireUnlocked(true);
 }
 

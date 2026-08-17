@@ -13,6 +13,7 @@ using namespace CommandProtocol;
 using namespace Im920Config;
 
 namespace {
+/** @brief UARTで受けた1行から表示可能なASCII文字だけを残す。 */
 String sanitizeAsciiLine(const String& line) {
   String cleaned;
   for (int index = 0; index < line.length(); ++index) {
@@ -49,12 +50,17 @@ uint32_t ledOffAt = 0;
 uint32_t lastRxMs = 0;
 uint32_t driveCommandCount = 0;
 
-/** @brief Gain Tuning結果1件のstop-and-wait送信状態。 */
+/**
+ * @brief Gain Tuning結果1件を確実に届けるstop-and-wait送信状態。
+ *
+ * ローカルmoduleの受理応答と、Raspberry Piから返るapplication ACKを
+ * 区別するために状態を分けて管理する。
+ */
 enum class GainTuningTxState : uint8_t {
-  IDLE,
-  WAIT_LOCAL_RESPONSE,
-  WAIT_REMOTE_ACK,
-  TURNAROUND_GUARD,
+  IDLE,                 ///< 送信対象がなく待機している。
+  WAIT_LOCAL_RESPONSE,  ///< ESP32側IM920のOK/NGを待っている。
+  WAIT_REMOTE_ACK,      ///< Raspberry Piから対応するACKを待っている。
+  TURNAROUND_GUARD,     ///< 無線の送受信方向が切り替わるまで待っている。
 };
 
 int tuningTxIndex = -1;
@@ -76,7 +82,7 @@ String gainTuningResultLabel(int index) {
 }
 
 void failGainTuningResultTx() {
-  Serial.print("GAIN TUNING result ACK timeout packet=");
+  Serial.print("[IM920] Gain Tuning結果のACK待機が上限に達しました packet=");
   Serial.println(gainTuningResultLabel(tuningTxIndex));
   chassisCtrlClearGainTuningResultReady();
   resetGainTuningTxState();
@@ -118,7 +124,7 @@ void updateLed() {
 void sendCommandToIm920(const String& command) {
   IM920.print(command);
   IM920.print("\r\n");
-  Serial.print("CMD -> ");
+  Serial.print("[IM920] command送信 -> ");
   Serial.println(command);
 }
 
@@ -150,15 +156,15 @@ String queryIm920Setting(const char* command) {
   flushIm920Input();
   sendCommandToIm920(command);
   const String response = readIm920LineBlocking(IM920_QUERY_TIMEOUT_MS);
-  Serial.print("IM920 CFG ");
+  Serial.print("[IM920] 設定応答 ");
   Serial.print(command);
   Serial.print(" <- ");
-  Serial.println(response.length() > 0 ? response : "<NO RESPONSE>");
+  Serial.println(response.length() > 0 ? response : "<応答なし>");
   return response;
 }
 
 void printIm920Configuration() {
-  Serial.println("--- IM920 configuration check ---");
+  Serial.println("[IM920] 設定確認を開始します");
   const String version = queryIm920Setting("RDVR");
   const String id = queryIm920Setting("RDID");
   const String node = queryIm920Setting("RDNN");
@@ -169,25 +175,25 @@ void printIm920Configuration() {
   (void)node;
 
   if (group.length() > 0 && group != EXPECTED_IM920_GROUP) {
-    Serial.print("WARNING: IM920 group mismatch. expected=");
+    Serial.print("[IM920] 警告: groupが設定値と一致しません 期待値=");
     Serial.print(EXPECTED_IM920_GROUP);
-    Serial.print(" actual=");
+    Serial.print(" 実際=");
     Serial.println(group);
   }
   if (channel.length() > 0 && channel != EXPECTED_IM920_CHANNEL) {
-    Serial.print("WARNING: IM920 channel mismatch. expected=");
+    Serial.print("[IM920] 警告: channelが設定値と一致しません 期待値=");
     Serial.print(EXPECTED_IM920_CHANNEL);
-    Serial.print(" actual=");
+    Serial.print(" 実際=");
     Serial.println(channel);
   }
-  Serial.println("--- IM920 configuration check end ---");
+  Serial.println("[IM920] 設定確認が完了しました");
 }
 
 void handleGainTuningResultAck(uint8_t ackIndex) {
   if (tuningTxState != GainTuningTxState::WAIT_REMOTE_ACK ||
       ackIndex != tuningTxIndex) return;
 
-  Serial.print("[TUNE ACK] ");
+  Serial.print("[IM920] Gain Tuning結果ACK受信 ");
   Serial.println(gainTuningResultLabel(ackIndex));
   if (ackIndex == GAIN_TUNING_WHEEL_COUNT) {
     chassisCtrlClearGainTuningResultReady();
@@ -207,7 +213,7 @@ void sendDispatchReply(const CommandDispatchResult& result) {
       im920SendText("CTRL STOP");
       break;
     case CommandReply::CTRL_ESTOP:
-      Serial.println("EMERGENCY STOP");
+      Serial.println("[IM920] 緊急停止Commandを実行しました");
       im920SendText("CTRL ESTOP");
       break;
     case CommandReply::POWER:
@@ -235,6 +241,8 @@ void sendDispatchReply(const CommandDispatchResult& result) {
 }
 
 void handlePayloadHex(const String& payloadHex) {
+  // IM920固有headerを除去したpayloadだけをDecoderへ渡す。
+  // decodeと実行に成功したpacketのみを有効な通信として扱う。
   Command command;
   const std::string_view payload(payloadHex.c_str(), payloadHex.length());
   if (!decodeCommand(payload, command)) return;
@@ -270,14 +278,14 @@ void sendGainTuningResultsIfReady() {
 
   if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
     if (millis() - tuningTxStartedMs < GAIN_TUNING_TX_RESPONSE_TIMEOUT_MS) return;
-    Serial.print("[TUNE TX] local response timeout ");
+    Serial.print("[IM920] ローカル応答待ちがtimeoutしました ");
     Serial.println(gainTuningResultLabel(tuningTxIndex));
     scheduleGainTuningResultRetry();
     return;
   }
   if (tuningTxState == GainTuningTxState::WAIT_REMOTE_ACK) {
     if (millis() - tuningTxStartedMs < GAIN_TUNING_RESULT_ACK_TIMEOUT_MS) return;
-    Serial.print("[TUNE ACK] timeout ");
+    Serial.print("[IM920] 遠端ACK待ちがtimeoutしました ");
     Serial.println(gainTuningResultLabel(tuningTxIndex));
     scheduleGainTuningResultRetry();
     return;
@@ -306,20 +314,20 @@ void sendGainTuningResultsIfReady() {
   }
 
   ++tuningTxAttemptCount;
-  Serial.print("[TUNE TX] ");
+  Serial.print("[IM920] Gain Tuning結果送信 ");
   Serial.print(gainTuningResultLabel(tuningTxIndex));
-  Serial.print(" attempt=");
+  Serial.print(" 試行回数=");
   Serial.println(tuningTxAttemptCount);
   if (ENABLE_GAIN_TUNING_TX_LOG) {
-    Serial.print("[TUNE TX] text=");
+    Serial.print("[IM920][DEBUG] 送信text=");
     Serial.println(message);
-    Serial.print("[TUNE TX] text_len=");
+    Serial.print("[IM920][DEBUG] text長[byte]=");
     Serial.println(message.length());
-    Serial.print("[TUNE TX] hex_len=");
+    Serial.print("[IM920][DEBUG] hex長[文字]=");
     Serial.println(message.length() * 2);
-    Serial.print("[TUNE TX] command_len=");
+    Serial.print("[IM920][DEBUG] TXDA command長[文字]=");
     Serial.println(5 + message.length() * 2);
-    Serial.print("[TUNE TX] index=");
+    Serial.print("[IM920][DEBUG] 結果index=");
     Serial.println(tuningTxIndex);
   }
   im920SendText(message);
@@ -331,7 +339,7 @@ void handleIm920Line(const String& rawLine) {
   const String line = sanitizeAsciiLine(rawLine);
   if (line.length() == 0) return;
   if (SHOW_RAW) {
-    // Serial.print("IM920 RAW <- ");
+    // Serial.print("[IM920][DEBUG] raw受信 <- ");
     // Serial.println(line);
   }
 
@@ -340,14 +348,16 @@ void handleIm920Line(const String& rawLine) {
     if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
       tuningTxState = GainTuningTxState::WAIT_REMOTE_ACK;
       tuningTxStartedMs = millis();
-      Serial.print("[TUNE TX] local OK ");
+      // OKはローカルIM920がTXDAを受理したことだけを示す。
+      // Raspberry Piへの配送完了は、別途remote ACKで確認する。
+      Serial.print("[IM920] ローカルIM920がTXDAを受理しました ");
       Serial.println(gainTuningResultLabel(tuningTxIndex));
     }
     return;
   }
   if (line == "NG") {
     if (tuningTxState == GainTuningTxState::WAIT_LOCAL_RESPONSE) {
-      Serial.print("[TUNE TX] local NG ");
+      Serial.print("[IM920] ローカルIM920がTXDAを拒否しました ");
       Serial.println(gainTuningResultLabel(tuningTxIndex));
       scheduleGainTuningResultRetry();
     }
@@ -360,6 +370,7 @@ void handleIm920Line(const String& rawLine) {
 }
 
 void readIm920Serial() {
+  // UARTのCR/LFまでを1lineとして組み立て、IM920固有line処理へ渡す。
   while (IM920.available()) {
     const char c = static_cast<char>(IM920.read());
     if (c == '\r' || c == '\n') {
@@ -376,6 +387,7 @@ void readIm920Serial() {
 }
 
 void readPcSerialCommand() {
+  // 開発時にPCから入力したIM920 commandを、そのままUARTへ中継する。
   while (Serial.available()) {
     const char c = static_cast<char>(Serial.read());
     if (c == '\r' || c == '\n') {
@@ -399,7 +411,7 @@ void im920Begin() {
   delay(1000);
   printIm920Configuration();
   lastRxMs = millis();
-  Serial.println("IM920 UART ready: RX=16 TX=17 19200bps");
+  Serial.println("[IM920] UARTの初期化が完了しました RX=16 TX=17 19200bps");
 }
 
 void im920Update() {
@@ -417,7 +429,7 @@ void im920CheckTimeout() {
     chassisCtrlClearGainTuningResultReady();
   }
   if (chassisCtrlIsActive()) {
-    Serial.println("COMM TIMEOUT -> STOP");
+    Serial.println("[IM920] 通信timeoutのため足回りを停止します");
     chassisCtrlStop();
   }
   lastRxMs = millis();
@@ -426,7 +438,7 @@ void im920CheckTimeout() {
 void im920SendText(const String& text) {
   if (!ENABLE_REPLY_TO_PI || text.length() == 0) return;
   if (text.length() > IM920_TXDA_MAX_PAYLOAD_BYTES) {
-    Serial.print("IM920 TXDA payload too long: ");
+    Serial.print("[IM920] TXDA payloadが上限を超えています length[byte]=");
     Serial.println(text.length());
     return;
   }

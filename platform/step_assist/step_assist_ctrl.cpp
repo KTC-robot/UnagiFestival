@@ -65,22 +65,22 @@ void printDistanceDebug(
     const char *mode,
     int distance)
 {
-  Serial.print("[STEP][DEBUG] t=");
+  Serial.print("[STEP_ASSIST][DEBUG] 時刻[ms]=");
   Serial.print(millis());
 
-  Serial.print(" phase=");
+  Serial.print(" 状態=");
   Serial.print(phaseName(currentPhase));
 
-  Serial.print(" sensor=");
+  Serial.print(" センサー=");
   Serial.print(sensorName);
 
-  Serial.print(" mode=");
+  Serial.print(" 判定=");
   Serial.print(mode);
 
-  Serial.print(" distance=");
+  Serial.print(" 距離[mm]=");
   Serial.print(distance);
 
-  Serial.println(" mm");
+  Serial.println();
 }
 
 void setFrontRaised(bool raised)
@@ -95,6 +95,7 @@ void setRearRaised(bool raised)
 
 void applyPhaseOutputs(StepAssistPhase phase)
 {
+  // phaseは補助輪の意味を持ち、Relay Driverには前後のON/OFFだけを渡す。
   switch (phase)
   {
   case StepAssistPhase::NORMAL:
@@ -158,11 +159,11 @@ void applyPhaseDriveScale(StepAssistPhase phase)
   }
 
   chassisCtrlSetDriveScale(forwardScale, backwardScale, otherScale);
-  Serial.print("[STEP][SCALE] FWD=");
+  Serial.print("[STEP_ASSIST] 速度scale 前進=");
   Serial.print(forwardScale, 2);
-  Serial.print(" BWD=");
+  Serial.print(" 後退=");
   Serial.print(backwardScale, 2);
-  Serial.print(" OTHER=");
+  Serial.print(" 横移動・旋回=");
   Serial.println(otherScale, 2);
 }
 
@@ -179,13 +180,13 @@ void transitionTo(StepAssistPhase nextPhase)
   const uint32_t elapsedMs =
       now - phaseEnteredMs;
 
-  Serial.print("[STEP] t=");
+  Serial.print("[STEP_ASSIST] 状態遷移 t=");
   Serial.print(now);
 
-  Serial.print(" elapsed=");
+  Serial.print(" 経過[ms]=");
   Serial.print(elapsedMs);
 
-  Serial.print(" ms ");
+  Serial.print(" ");
   Serial.print(phaseName(currentPhase));
 
   Serial.print(" -> ");
@@ -279,7 +280,7 @@ void printCurrentPhaseDebug(const StepAssistInput& input)
     }
     else
     {
-      Serial.println("[STEP][DEBUG] FRONT measurement invalid");
+      Serial.println("[STEP_ASSIST][DEBUG] FRONTの測距値を利用できません");
     }
     break;
 
@@ -290,7 +291,7 @@ void printCurrentPhaseDebug(const StepAssistInput& input)
     }
     else
     {
-      Serial.println("[STEP][DEBUG] CENTER measurement invalid");
+      Serial.println("[STEP_ASSIST][DEBUG] CENTERの測距値を利用できません");
     }
     break;
 
@@ -301,28 +302,28 @@ void printCurrentPhaseDebug(const StepAssistInput& input)
     }
     else
     {
-      Serial.println("[STEP][DEBUG] REAR measurement invalid");
+      Serial.println("[STEP_ASSIST][DEBUG] REARの測距値を利用できません");
     }
     break;
 
   case StepAssistPhase::REAR_SENSOR_LOWER:
     if (!input.rearFresh)
     {
-      Serial.println("[STEP][DEBUG] REAR measurement invalid");
+      Serial.println("[STEP_ASSIST][DEBUG] REARの測距値を利用できません");
       break;
     }
 
-    Serial.print("[STEP][DEBUG] t=");
+    Serial.print("[STEP_ASSIST][DEBUG] 時刻[ms]=");
     Serial.print(millis());
-    Serial.print(" phase=");
+    Serial.print(" 状態=");
     Serial.print(phaseName(currentPhase));
-    Serial.print(" sensor=REAR mode=DROP_DETECT distance=");
+    Serial.print(" センサー=REAR 判定=DROP_DETECT 距離[mm]=");
     Serial.print(input.rearDistanceMm);
-    Serial.print(" mm elapsed=");
+    Serial.print(" 経過[ms]=");
     Serial.print(input.phaseElapsedMs);
-    Serial.print(" grace=");
+    Serial.print(" 猶予[ms]=");
     Serial.print(STEP_ASSIST_REAR_DROP_GRACE_MS);
-    Serial.println(" ms");
+    Serial.println();
     break;
   }
 }
@@ -341,32 +342,32 @@ void printTransitionTrigger(
   switch (phase)
   {
   case StepAssistPhase::NORMAL:
-    Serial.print("[STEP][TRIGGER] FRONT step distance=");
+    Serial.print("[STEP_ASSIST] FRONT段差検出 距離[mm]=");
     Serial.print(input.frontDistanceMm);
     break;
 
   case StepAssistPhase::FRONT_LOWERED:
-    Serial.print("[STEP][TRIGGER] CENTER step distance=");
+    Serial.print("[STEP_ASSIST] CENTER段差検出 距離[mm]=");
     Serial.print(input.centerDistanceMm);
     break;
 
   case StepAssistPhase::BOTH_LOWERED:
-    Serial.print("[STEP][TRIGGER] REAR step distance=");
+    Serial.print("[STEP_ASSIST] REAR段差検出 距離[mm]=");
     Serial.print(input.rearDistanceMm);
     break;
 
   case StepAssistPhase::REAR_SENSOR_LOWER:
-    Serial.print("[STEP][TRIGGER] REAR drop distance=");
+    Serial.print("[STEP_ASSIST] REAR下降検出 距離[mm]=");
     Serial.print(input.rearDistanceMm);
     break;
 
   case StepAssistPhase::REAR_RAISED:
-    Serial.print("[STEP][TRIGGER] FRONT drop distance=");
+    Serial.print("[STEP_ASSIST] FRONT下降検出 距離[mm]=");
     Serial.print(input.frontDistanceMm);
     break;
   }
 
-  Serial.println(" mm");
+  Serial.println();
 }
 
 } // namespace
@@ -376,7 +377,7 @@ bool stepAssistCtrlBegin()
   stepAssistCtrlReset();
 
   Serial.println(
-      "段差制御 初期化完了: 前補助輪=UP 後補助輪=UP");
+      "[STEP_ASSIST] 初期化完了 前補助輪=UP 後補助輪=UP");
 
   return true;
 }
@@ -395,9 +396,9 @@ void stepAssistCtrlReset()
 
   resetGuardActive = true;
   resetGuardStartedMs = now;
-  Serial.print("[STEP][RESET_GUARD] START ");
+  Serial.print("[STEP_ASSIST] reset後の状態遷移guardを開始します duration[ms]=");
   Serial.print(STEP_ASSIST_RESET_GUARD_MS);
-  Serial.println("ms");
+  Serial.println();
 }
 
 void stepAssistCtrlUpdate()
@@ -411,7 +412,7 @@ void stepAssistCtrlUpdate()
     }
 
     resetGuardActive = false;
-    Serial.println("[STEP][RESET_GUARD] END");
+    Serial.println("[STEP_ASSIST] reset後の状態遷移guardを終了します");
   }
 
   const uint32_t now = millis();

@@ -13,7 +13,8 @@
  * PWM周波数を50Hzへ設定し、全16チャネルをFULL OFFにする。
  * Laser Sensor用I2C Busとは独立したTwoWireを初期化する。
  *
- * @return 初期化に成功した場合true。
+ * @return Servo専用I2C、接続確認、50Hz設定に成功した場合true。
+ *         いずれかに失敗した場合false。
  */
 bool pca9685DriverBegin();
 
@@ -22,7 +23,7 @@ bool pca9685DriverBegin();
  *
  * @param channel PCA9685チャネル。0〜15。
  * @param pulseUs パルス幅。マイクロ秒単位。
- * @return 出力に成功した場合true。
+ * @return 有効channelへPWMを書き込めた場合true。未初期化や範囲外ではfalse。
  */
 bool pca9685DriverSetPulseUs(uint8_t channel, uint16_t pulseUs);
 

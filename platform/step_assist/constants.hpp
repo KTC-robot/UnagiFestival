@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file constants.hpp
+ * @brief StepAssistの距離判定、待機時間、状態別速度scaleを定義する。
+ */
+
 // 段差へ接近したと判定する距離。
 constexpr int STEP_ASSIST_STEP_DETECT_THRESHOLD_MM = 120;
 
