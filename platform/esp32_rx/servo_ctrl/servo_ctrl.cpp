@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 #include "servo_ctrl/constants.h"
-#include "servo_manager/servo_manager.hpp"
+#include "pca9685/pca9685_driver.hpp"
 
 using namespace CanConfig_servo_ctrl;
 
@@ -40,8 +40,8 @@ bool setServoAngle(uint8_t channel, uint8_t requestedAngle) {
     );
   }
 
-  // servo_ctrlは角度だけを解釈し、TCA/PCA9685への物理出力はmanagerへ委譲する。
-  if (!servoManagerSetPulseUs(SERVO_PCA_CHANNEL[channel], pulseUs)) {
+  // servo_ctrlは角度だけを解釈し、PCA9685への物理出力はDriverへ委譲する。
+  if (!pca9685DriverSetPulseUs(SERVO_PCA_CHANNEL[channel], pulseUs)) {
     return false;
   }
 
@@ -60,15 +60,11 @@ bool setServoAngle(uint8_t channel, uint8_t requestedAngle) {
 }  // namespace
 
 void servoCtrlBegin() {
-  servoManagerBegin();
-}
-
-bool servoCtrlRestoreAfterI2cRecovery() {
-  return servoManagerRestoreAfterI2cRecovery();
+  pca9685DriverBegin();
 }
 
 void servoCtrlDisableAll() {
-  servoManagerDisableAll();
+  pca9685DriverDisableAll();
 }
 
 bool servoCtrlSetAngle(uint8_t channel, uint8_t angle) {
