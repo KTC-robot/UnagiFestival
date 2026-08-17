@@ -140,8 +140,8 @@ bool initializeOneSensor(int index) {
   Serial.print("[LASER] VL53L0Xを初期化します sensor=");
   Serial.println(LASER_SENSOR_NAMES[index]);
 
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     disableSensor(index);
     return false;
   }
@@ -192,8 +192,8 @@ void readOneSensor(int index) {
     return;
   }
 
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     countSensorFailure(index);
     return;
   }

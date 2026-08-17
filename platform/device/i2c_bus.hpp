@@ -8,20 +8,20 @@
  */
 
 /**
- * @brief LaserSensor用I2C Busのmutexをscope単位で保持する。
+ * @brief LaserSensor用I2C Busへの接続をscope単位で保持する。
  *
  * constructorでlockし、scopeを抜ける際に自動unlockすることで、
  * TCA channel選択からVL53L0X操作までの排他を崩さない。
  */
-class I2cBusLockGuard {
+class I2cBusConnection {
  public:
-  /** @brief I2C Busのrecursive mutexを取得する。 */
-  I2cBusLockGuard();
+  /** @brief I2C Busのrecursive mutex(I2cBusの1コネクション)を取得する。 */
+  I2cBusConnection();
   /** @brief 取得済みの場合にI2C Busのmutexを解放する。 */
-  ~I2cBusLockGuard();
+  ~I2cBusConnection();
 
-  I2cBusLockGuard(const I2cBusLockGuard&) = delete;
-  I2cBusLockGuard& operator=(const I2cBusLockGuard&) = delete;
+  I2cBusConnection(const I2cBusConnection&) = delete;
+  I2cBusConnection& operator=(const I2cBusConnection&) = delete;
 
   /** @return mutexを取得できている場合true。 */
   bool locked() const;
@@ -61,7 +61,7 @@ void i2cBusApplySettings();
 /**
  * @brief lock保持中のBusへ1byteを書き込む。
  *
- * 呼び出し側がI2cBusLockGuardを保持している必要がある。
+ * 呼び出し側がI2cBusConnectionを保持している必要がある。
  *
  * @param address 7bit I2Cアドレス。
  * @param value 書き込む1byte。
