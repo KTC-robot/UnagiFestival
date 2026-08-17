@@ -102,5 +102,8 @@ class IM920HatDriver:
         return True
 
     def close(self) -> None:
-        """GPIO resourceを解放する."""
-        GPIO.cleanup()
+        """I2CとGPIO resourceを解放する."""
+        try:
+            self._i2c.close()
+        finally:
+            GPIO.cleanup()
