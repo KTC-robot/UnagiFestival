@@ -24,6 +24,10 @@ unfixable = [
 convention = "google"
 
 [lint.per-file-ignores]
+# 本projectの構造化Docstringはsummary行を置かず、必須sectionから開始する。
+"src/unagifestival/tools/gain_tuning_test.py" = ["D205", "D212", "D415"]
+"src/unagifestival/tools/ps_controller/*.py" = ["D205", "D212", "D415"]
+"src/unagifestival/tools/ps_controller/**/*.py" = ["D205", "D212", "D415"]
 "tests/**/*.py" = [
     "D",
     "S101",

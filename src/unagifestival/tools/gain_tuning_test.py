@@ -1,4 +1,8 @@
-"""ホイールRPM補正ゲイン調整用の自動走行テストCLI."""
+"""
+wheel RPM補正gainを測定する自動走行テストCLIを提供する。
+
+4輪のgain同期、測定結果の完全性確認、推奨値計算、CSV保存を行う。
+"""
 # CLIの結果は標準出力へ表示するため、print禁止だけをファイル単位で除外する。
 # ruff: noqa: T201
 
@@ -93,10 +97,16 @@ CSV_FIELDS = (
 
 
 def parse_speed(value: str) -> int:
-    """速度引数を1-127の整数として解析する.
+    """
+    Args:
+        value: CLIで指定された速度文字列。
+    Returns:
+        1から127の範囲へ検証した速度値。
+    About:
+        CLIの速度引数を整数へ変換し、許容範囲を検証する。
 
     Raises:
-        argparse.ArgumentTypeError: 指定値が許容範囲外の場合.
+        argparse.ArgumentTypeError: 指定値が整数でないか許容範囲外の場合。
     """
     parsed = int(value)
     if not 1 <= parsed <= DRIVE_VALUE_MAX:
@@ -105,16 +115,15 @@ def parse_speed(value: str) -> int:
 
 
 def parse_gain(value: str) -> GainSetting:
-    """`WHEEL:GAIN`形式をwheel indexとgainへ変換する.
-
+    """
     Args:
-        value: 例として`FL:1.000`形式の文字列.
-
+        value: `FL:1.000`形式のgain指定文字列。
     Returns:
-        wheel indexと0.50-1.50のgain.
-
+        wheel indexと0.50から1.50のgain。
+    About:
+        wheel名とgainを分離し、各値の形式と範囲を検証する。
     Raises:
-        argparse.ArgumentTypeError: 形式、wheel名、gain範囲が不正な場合.
+        argparse.ArgumentTypeError: 形式、wheel名、gain範囲が不正な場合。
     """
     parts = value.split(":")
     if len(parts) != GAIN_PART_COUNT or parts[0].upper() not in WHEEL_INDEX:
@@ -129,7 +138,14 @@ def parse_gain(value: str) -> GainSetting:
 
 
 def parse_args() -> argparse.Namespace:
-    """コマンドライン引数を定義して解析する."""
+    """
+    Args:
+        なし。
+    Returns:
+        解析済みのCLI引数。
+    About:
+        wheel gain測定で使用するコマンドライン引数を定義して解析する。
+    """
     parser = argparse.ArgumentParser(
         description="4輪の実測RPMから方向別wheel gainを算出してCSVへ保存する",
     )
@@ -156,13 +172,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    """試験時間、keepalive、timeout、gain指定の整合性を検証する.
-
+    """
     Args:
-        args: `parse_args`が返したCLI引数.
-
+        args: parse_argsが返したCLI引数。
+    Returns:
+        なし。
+    About:
+        試験時間、keepalive、timeout、gain指定の整合性を検証する。
     Raises:
-        ValueError: 制約外の値またはwheelの重複指定がある場合.
+        ValueError: 制約外の値またはwheelの重複指定がある場合。
     """
     if (
         not TUNING_DURATION_UNIT_MS <= args.duration_ms <= TUNING_DURATION_MAX_MS
@@ -179,27 +197,27 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def build_drive_command(direction: str, speed: int) -> DriveCommand:
-    """ユーザー指定の方向と速度からESP32向け走行指令を作成する.
-
+    """
     Args:
-        direction: forward、backward、right、leftのいずれか.
-        speed: 方向へ掛ける1-127の速度値.
-
+        direction: forward、backward、right、leftのいずれか。
+        speed: 方向へ掛ける1から127の速度値。
     Returns:
-        符号を反映したvx、vy、wzを持つ走行指令.
+        符号を反映したvx、vy、wzを持つ走行Command。
+    About:
+        ユーザー指定の方向vectorへ速度を掛けて走行条件を生成する。
     """
     vx_sign, vy_sign, wz_sign = DIRECTION_VECTORS[direction]
     return DriveCommand(vx=vx_sign * speed, vy=vy_sign * speed, wz=wz_sign * speed)
 
 
 def parse_tuning_result(text: str) -> TuningResult | None:
-    """`WG<wheel>,rpm,samples[,stddev]`を試験結果へ変換する.
-
+    """
     Args:
-        text: ESP32から受信した復号済みpayload.
-
+        text: ESP32から受信した復号済みpayload。
     Returns:
-        wheel RPM結果。WG形式と完全一致しない場合はNone.
+        wheel RPM結果。WG形式と完全一致しない場合はNone。
+    About:
+        WG result frameを解析し、数値化した試験結果へ変換する。
     """
     match = TUNING_RESULT_PATTERN.fullmatch(text)
     if match is None:
@@ -215,16 +233,13 @@ def parse_tuning_result(text: str) -> TuningResult | None:
 
 
 def gains_by_wheel(gains: list[GainSetting]) -> dict[int, float]:
-    """CLI指定を4輪すべてのcurrent gainへ展開する.
-
-    未指定wheelは1.0とする。この戻り値は試験前に全件ESP32へ送信し、
-    Python側の認識値とESP32実値を毎試験一致させる.
-
+    """
     Args:
-        gains: CLIで明示されたwheel indexとgain.
-
+        gains: CLIで明示されたwheel indexとgain。
     Returns:
-        0-3の全wheelを必ず含むgain辞書.
+        0から3の全wheelを必ず含むgain辞書。
+    About:
+        未指定wheelを1.0で補い、ESP32へ同期する4輪分の設定へ展開する。
     """
     result = dict.fromkeys(range(WHEEL_COUNT), 1.0)
     result.update(gains)
@@ -234,15 +249,15 @@ def gains_by_wheel(gains: list[GainSetting]) -> dict[int, float]:
 def calculate_recommendations(
     gains: dict[int, float], results: dict[int, TuningResult]
 ) -> tuple[float | None, dict[int, float]]:
-    """4輪の平均絶対RPMから次回の推奨gainを計算する.
-
+    """
     Args:
-        gains: 今回ESP32へ適用確認済みのcurrent gain.
-        results: wheel index別のRPM集計結果.
-
+        gains: 今回ESP32へ適用確認済みのcurrent gain。
+        results: wheel index別のRPM集計結果。
     Returns:
-        全結果が有効ならreference RPMと0.50-1.50へclampした推奨gain.
-        欠損、sampleCount=0、またはRPMがほぼ0なら`(None, {})`.
+        全結果が有効ならreference RPMと範囲内へclampした推奨gain。
+        欠損または無効な測定値がある場合はNoneと空辞書。
+    About:
+        4輪の平均絶対RPMを基準として次回のwheel gainを計算する。
     """
     if set(results) != set(range(WHEEL_COUNT)):
         return None, {}
@@ -265,12 +280,20 @@ def read_decoded_frame(
     client: IM920Client,
     logger: logging.Logger,
 ) -> str:
-    """IM920から最大1フレームを読み、debugログ付きで復号する."""
+    """
+    Args:
+        client: responseをpollするIM920 Client。
+        logger: 受信内容を記録するlogger。
+    Returns:
+        復号済み文字列。受信データがない場合は空文字列。
+    About:
+        IM920から最大1frameを読み、raw dataと復号結果をdebugログへ記録する。
+    """
     response = client.poll()
     if response is None:
         return ""
-    logger.debug("[RX RAW] %r", response.raw)
-    logger.debug("[RX DECODED] %s", response.text)
+    logger.debug("[受信 RAW] %r", response.raw)
+    logger.debug("[受信 復号済み] %s", response.text)
     return response.text
 
 
@@ -282,21 +305,21 @@ def set_and_confirm_wheel_gains(
     gains: dict[int, float],
     timeout_ms: int = DEFAULT_GAIN_ACK_TIMEOUT_MS,
 ) -> None:
-    """4輪のgainを送信し、ESP32が返すWGSを全件照合する.
-
-    TXDAのローカルOKでは遠端ESP32への適用を確認できないため、direction、
-    wheel、wire scale丸め後のgainが一致するWGSだけをACKとして扱う.
-
+    """
     Args:
-        client: wheel gain送信とWGS受信を行うIM920 Facade.
-        commands: gain設定Commandを生成するFactory.
-        logger: debugログ出力先.
-        direction: ESP32 wire protocol上の方向番号.
-        gains: 0-3の4wheelすべてを含むgain.
-        timeout_ms: 全WGSを待つ最大時間[ms].
-
+        client: wheel gain送信とWGS受信を行うIM920 Facade。
+        commands: gain設定Commandを生成するFactory。
+        logger: debugログ出力先。
+        direction: ESP32 wire protocol上の方向番号。
+        gains: 0から3の4wheelすべてを含むgain。
+        timeout_ms: 全WGSを待つ最大時間。
+    Returns:
+        なし。
+    About:
+        4輪のgainを順に送信し、値が一致するWGSを全件確認する。
+        TXDAのローカルOKは遠端での適用確認には使用しない。
     Raises:
-        TimeoutError: timeoutまでに正しいWGSが4輪分揃わない場合.
+        TimeoutError: timeoutまでに正しいWGSが4輪分揃わない場合。
     """
     overall_deadline = time.monotonic() + timeout_ms / 1000.0
     # 未指定wheelを含む4輪すべてを毎試験送信し、ESP32実値とcurrent_gainを同期する。
@@ -309,7 +332,7 @@ def set_and_confirm_wheel_gains(
             if time.monotonic() >= overall_deadline:
                 break
             logger.debug(
-                "[GAIN TX] wheel=%s attempt=%d",
+                "[GAIN 送信] wheel=%s attempt=%d",
                 WHEEL_NAMES[wheel],
                 attempt + 1,
             )
@@ -348,7 +371,7 @@ def set_and_confirm_wheel_gains(
                 break
 
             logger.warning(
-                "[GAIN ACK] timeout wheel=%s attempt=%d",
+                "[GAIN ACK] timeoutが発生しました: wheel=%s attempt=%d",
                 WHEEL_NAMES[wheel],
                 attempt + 1,
             )
@@ -366,18 +389,18 @@ def collect_tuning_results(
     result_timeout_ms: int,
     keepalive_ms: int,
 ) -> tuple[dict[int, TuningResult], bool]:
-    """走行中のkeepaliveを維持しながらWG0-WG3とWDを回収する.
-
+    """
     Args:
-        client: keepalive/ACK送信と結果受信を行うIM920 Facade.
-        commands: keepaliveと結果ACK Commandを生成するFactory.
-        logger: debugログ出力先.
-        duration_ms: ESP32側の試験時間[ms].
-        result_timeout_ms: 試験終了後の結果待ち時間[ms].
-        keepalive_ms: 走行中のkeepalive間隔[ms].
-
+        client: keepaliveとACK送信および結果受信を行うIM920 Facade。
+        commands: keepaliveと結果ACK Commandを生成するFactory。
+        logger: debugログ出力先。
+        duration_ms: ESP32側の試験時間。
+        result_timeout_ms: 試験終了後の結果待ち時間。
+        keepalive_ms: 走行中のkeepalive間隔。
     Returns:
-        wheel別結果とWD受信有無. WG全件とWDが揃うまで待機する.
+        wheel別結果とWD受信有無。
+    About:
+        走行中のkeepaliveを維持しながらWG0からWG3とWDを回収してACKする。
     """
     results: dict[int, TuningResult] = {}
     done_received = False
@@ -401,18 +424,18 @@ def collect_tuning_results(
             # ACK欠損によるduplicate WGも上書き保存し、必ず再ACKする。
             results[wheel] = result
             logger.debug(
-                "[RX RESULT] wheel=%s rpm=%s samples=%s",
+                "[結果受信] wheel=%s rpm=%s samples=%s",
                 WHEEL_NAMES[wheel],
                 result["mean_rpm"],
                 result["sample_count"],
             )
             client.send(commands.ack_gain_tuning_result(wheel))
-            logger.debug("[RESULT ACK TX] WG%s", wheel)
+            logger.debug("[結果ACK送信] WG%s", wheel)
         elif text == "WD":
             done_received = True
-            logger.debug("[RX DONE] WD")
+            logger.debug("[完了受信] WD")
             client.send(commands.ack_gain_tuning_result(WHEEL_COUNT))
-            logger.debug("[RESULT ACK TX] WD")
+            logger.debug("[結果ACK送信] WD")
 
         # WDだけでは成功にせず、wheel番号をsequenceとして完全性を確認する。
         if done_received and len(results) == WHEEL_COUNT and completion_deadline is None:
@@ -431,9 +454,14 @@ def tuning_completion_error(
     *,
     done_received: bool,
 ) -> str | None:
-    """結果protocolと有効sampleの不足理由を返す.
-
-    WG0-WG3、WD、有効sampleのすべてが揃う場合だけNoneを返す.
+    """
+    Args:
+        results: wheel index別の受信結果。
+        done_received: WDを受信済みかどうか。
+    Returns:
+        結果が不完全な場合は不足理由、完全な場合はNone。
+    About:
+        WG0からWG3、WD、有効sampleがすべて揃っているか検証する。
     """
     missing = set(range(WHEEL_COUNT)) - set(results)
     if missing:
@@ -461,19 +489,22 @@ def write_csv(  # noqa: PLR0913
     gains: dict[int, float],
     results: dict[int, TuningResult],
 ) -> None:
-    """1回の試験結果をwheelごとの4行としてCSVへ追記する.
-
+    """
     Args:
-        csv_path: 出力先CSV.
-        run_id: 試験を識別するID.
-        timestamp: 試験開始時刻.
-        status: done、incomplete、interruptedのいずれか.
-        direction: ユーザー指定の走行方向.
-        speed: 走行速度指令.
-        command: 実際に送ったvx、vy、wz.
-        duration_ms: 試験時間[ms].
-        gains: ESP32への適用をWGSで確認したcurrent gain.
-        results: 受信できたwheel別RPM結果.
+        csv_path: 出力先CSV。
+        run_id: 試験を識別するID。
+        timestamp: 試験開始時刻。
+        status: done、incomplete、interruptedのいずれか。
+        direction: ユーザー指定の走行方向。
+        speed: 走行速度指令。
+        command: 実際に送ったvx、vy、wz。
+        duration_ms: 試験時間。
+        gains: ESP32への適用をWGSで確認したcurrent gain。
+        results: 受信できたwheel別RPM結果。
+    Returns:
+        なし。
+    About:
+        1回の試験結果をwheelごとの4行としてCSVへ追記する。
     """
     reference_rpm, recommendations = calculate_recommendations(gains, results)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -514,7 +545,16 @@ def print_recommendations(
     gains: dict[int, float],
     results: dict[int, TuningResult],
 ) -> None:
-    """測定結果、推奨gain、次回用CLIコマンドを表示する."""
+    """
+    Args:
+        args: 実行中のCLI引数。
+        gains: 今回使用したwheel別gain。
+        results: wheel別のRPM測定結果。
+    Returns:
+        なし。
+    About:
+        測定結果、推奨gain、次回の試験に利用できるCLI commandを表示する。
+    """
     reference_rpm, recommendations = calculate_recommendations(gains, results)
     print(f"direction: {args.direction}")
     if reference_rpm is None:
@@ -549,21 +589,29 @@ def print_recommendations(
 
 
 def main() -> None:
-    """4輪gain同期、走行試験、結果検証、CSV保存を順に実行する.
-
-    WGSを4輪分確認できなければ走行を開始しない。走行開始後は例外や
-    ユーザー中断を含むすべての終了経路でSTOPとGPIO cleanupを実行する.
+    """
+    Args:
+        なし。
+    Returns:
+        なし。
+    About:
+        4輪gain同期、走行試験、結果検証、CSV保存を順に実行する。
+        終了経路にかかわらずSTOP送信とhardware resource解放を行う。
     """
     args = parse_args()
     validate_args(args)
+    started_at = datetime.now().astimezone()
+    logs_dir = Path("logs")
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = logs_dir / f"gain_tuning_test_{started_at:%Y%m%d_%H%M%S}.log"
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
     )
     logger = logging.getLogger("gain_tuning_test")
     command = build_drive_command(args.direction, args.speed)
     gain_map = gains_by_wheel(args.gain)
-    started_at = datetime.now().astimezone()
     timestamp = started_at.isoformat(timespec="seconds")
     run_id = started_at.strftime("%Y%m%d_%H%M%S")
     results: dict[int, TuningResult] = {}
@@ -581,7 +629,7 @@ def main() -> None:
         )
 
         print(f"試験開始: {args.direction} speed={args.speed} duration={args.duration_ms}ms")
-        logger.debug("[TUNE START] command=%s duration_ms=%s", command, args.duration_ms)
+        logger.debug("[測定開始] command=%s duration_ms=%s", command, args.duration_ms)
         client.send(commands.start_gain_tuning(command, args.duration_ms))
         results, done_received = collect_tuning_results(
             client,

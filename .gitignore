@@ -9,6 +9,7 @@ wheels
 __pychache__
 *.egg-info
 *.log
+logs/
 
 # cpp
 .pio

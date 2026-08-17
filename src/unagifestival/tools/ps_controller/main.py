@@ -3,6 +3,7 @@ import logging
 import time
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from unagifestival.tools.ps_controller.device import (
     find_controller,
@@ -17,9 +18,16 @@ from unagifestival.tools.ps_controller.model import (
 
 
 def setup_logger() -> logging.Logger:
-    """ロガーを初期化する.
+    """
+    Args:
+        なし。
 
-    実行日時をファイル名にしてログを保存する。
+    Returns:
+        Controller処理で共有するlogger。
+
+    About:
+        console出力とlogs配下の実行別ファイル出力を設定する。
+        既にhandlerが登録済みの場合は重複登録しない。
     """
     logger = logging.getLogger("unagi_log")
     logger.setLevel(logging.INFO)
@@ -29,13 +37,16 @@ def setup_logger() -> logging.Logger:
         return logger
 
     timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"unagi_log_{timestamp}.log"
+    logs_dir = Path("logs")
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_filename = logs_dir / f"ps_controller_{timestamp}.log"
 
     file_handler = logging.FileHandler(log_filename)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    file_handler.setFormatter(formatter)
 
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+    stream_handler.setFormatter(formatter)
 
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
@@ -44,8 +55,19 @@ def setup_logger() -> logging.Logger:
 
 
 def main() -> None:
+    """
+    Args:
+        なし。
+
+    Returns:
+        なし。
+
+    About:
+        ControllerとHandlerを初期化し、入力処理と周期処理を実行する。
+        終了時には通信resourceと入力デバイスの排他状態を解放する。
+    """
     logger = setup_logger()
-    logger.info("=== CONTROLLER START ===")
+    logger.info("=== Controller処理を開始します ===")
 
     dev = find_controller()
     if dev is None:
@@ -54,7 +76,7 @@ def main() -> None:
 
     axis_info = dev.axis_info
 
-    logger.info("Controller: %s %s", dev.path, dev.name)
+    logger.info("Controllerを使用します: path=%s name=%s", dev.path, dev.name)
 
     axis_values: AxisValueMap = {}
 
@@ -87,7 +109,7 @@ def main() -> None:
             last_send = handler.tick(now, state, last_send)
 
     except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt")
+        logger.info("キーボード割り込みを受け付けました")
 
     finally:
         handler.exit()
@@ -95,7 +117,7 @@ def main() -> None:
         with contextlib.suppress(OSError):
             dev.ungrab()
 
-        logger.info("=== CONTROLLER END ===")
+        logger.info("=== Controller処理を終了します ===")
 
 
 if __name__ == "__main__":

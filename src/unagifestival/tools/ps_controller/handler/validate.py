@@ -10,7 +10,14 @@ INVALID_HANDLER_CONFIG_MESSAGE = "invalid handler configuration"
 
 
 def validate_handler_config() -> None:
-    """Handler固有の周期・入力係数が安全な範囲か検証する."""
+    """
+    Args:
+        なし。
+    Returns:
+        なし。
+    About:
+        Handler固有の周期、入力範囲、slow mode係数が有効か検証する。
+    """
     if (
         DRIVE_HZ <= 0
         or STICK_SEND_MAX <= 0

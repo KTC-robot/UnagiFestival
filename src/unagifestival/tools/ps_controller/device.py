@@ -64,18 +64,23 @@ def _calculate_device_score(
     absolute_codes: Collection[int],
     key_codes: Collection[int],
 ) -> int:
-    """デバイスが持つ機能や名前に基づいてスコアを算出する."""
+    """
+    Args:
+        device_name: 小文字へ正規化した入力デバイス名。
+        absolute_codes: デバイスが持つ絶対軸コード。
+        key_codes: デバイスが持つボタンコード。
+    Returns:
+        Controller候補としての優先度score。
+    About:
+        名前と入力機能からPS Controller候補の優先度を算出する。
+    """
     score = 0
 
     if KEYWORD_TOUCHPAD in device_name or KEYWORD_MOTION in device_name:
         score += PENALTY_IGNORED_DEVICE
 
-    score += sum(
-        weight for code, weight in AXIS_SCORES.items() if code in absolute_codes
-    )
-    score += sum(
-        weight for code, weight in BUTTON_SCORES.items() if code in key_codes
-    )
+    score += sum(weight for code, weight in AXIS_SCORES.items() if code in absolute_codes)
+    score += sum(weight for code, weight in BUTTON_SCORES.items() if code in key_codes)
 
     if KEYWORD_WIRELESS in device_name:
         score += SCORE_NAME_EXACT
@@ -88,7 +93,14 @@ def _calculate_device_score(
 
 
 def parse_button_state(value: int) -> ButtonState | None:
-    """evdevのKEY値をボタン状態へ変換する."""
+    """
+    Args:
+        value: evdevが通知したKEY値。
+    Returns:
+        押下または解放状態。不正値とkey repeatの場合はNone。
+    About:
+        LinuxのKEY値をapplication側のボタン状態へ変換する。
+    """
     if value == ButtonState.RELEASED:
         return ButtonState.RELEASED
     if value == ButtonState.PRESSED:
@@ -99,7 +111,14 @@ def parse_button_state(value: int) -> ButtonState | None:
 
 
 def parse_input_event(event: InputEvent) -> ControllerInputEvent | None:
-    """evdevのraw eventを検証してapplication eventへ変換する."""
+    """
+    Args:
+        event: evdevから読み取ったraw event。
+    Returns:
+        対応するControllerイベント。対象外または不正な場合はNone。
+    About:
+        軸またはボタンのraw eventをapplication eventへ変換する。
+    """
     if event.type == EventType.ABS:
         axis = AxisCode.get_by_code(event.code)
         if axis is None:
@@ -117,14 +136,18 @@ def parse_input_event(event: InputEvent) -> ControllerInputEvent | None:
 
 
 def _get_axis_info(device: InputDevice) -> AxisInfoMap:
-    """evdevのABS capabilityをapplicationの軸情報へ変換する."""
+    """
+    Args:
+        device: 軸情報を読み取るevdev InputDevice。
+    Returns:
+        Controller軸ごとの初期値と入力範囲。
+    About:
+        ABS capabilityを検証し、application側の軸情報へ変換する。
+    """
     axis_information: AxisInfoMap = {}
 
     for entry in device.capabilities(absinfo=True).get(ecodes.EV_ABS, []):
-        if (
-            not isinstance(entry, tuple)
-            or len(entry) != ABS_CAPABILITY_ENTRY_SIZE
-        ):
+        if not isinstance(entry, tuple) or len(entry) != ABS_CAPABILITY_ENTRY_SIZE:
             continue
 
         raw_code, raw_info = entry
@@ -145,32 +168,82 @@ def _get_axis_info(device: InputDevice) -> AxisInfoMap:
 
 
 class ControllerDevice:
-    """evdev InputDeviceを型付きcontroller interfaceとして公開する."""
+    """
+    Properties:
+        axis_info: Controller軸ごとの初期値と入力範囲。
+        path: Linux入力デバイスのpath。
+        name: Linux入力デバイスの名称。
+    About:
+        evdev InputDeviceをController入力専用の型付きinterfaceとして公開する。
+    """
 
     def __init__(self, device: InputDevice) -> None:
+        """
+        Args:
+            device: 内部で使用するevdev InputDevice。
+        Returns:
+            なし。
+        About:
+            入力デバイスを保持し、軸情報を読み取る。
+        """
         self._device = device
         self.axis_info = _get_axis_info(device)
 
     @property
     def path(self) -> str:
-        """デバイスパスを返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            Linux入力デバイスのpath。
+        About:
+            内部InputDeviceのpathを公開する。
+        """
         return self._device.path
 
     @property
     def name(self) -> str:
-        """デバイス名を返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            Linux入力デバイスの名称。
+        About:
+            内部InputDeviceの名称を空文字列fallback付きで公開する。
+        """
         return self._device.name or ""
 
     def grab(self) -> None:
-        """コントローラー入力を排他取得する."""
+        """
+        Args:
+            なし。
+        Returns:
+            なし。
+        About:
+            Controller入力を現在のprocessで排他取得する。
+        """
         self._device.grab()
 
     def ungrab(self) -> None:
-        """コントローラー入力の排他取得を解除する."""
+        """
+        Args:
+            なし。
+        Returns:
+            なし。
+        About:
+            Controller入力の排他取得を解除する。
+        """
         self._device.ungrab()
 
     def read_events(self, timeout_seconds: float) -> list[ControllerInputEvent]:
-        """読み取り可能な入力をapplication eventとして返す."""
+        """
+        Args:
+            timeout_seconds: 入力を待つ最大時間。
+        Returns:
+            読み取り可能だったControllerイベントの一覧。
+        About:
+            指定時間だけ入力を待ち、raw eventをapplication eventへ変換する。
+        """
         readable, _, _ = select.select(
             [self._device.fd],
             [],
@@ -189,9 +262,13 @@ class ControllerDevice:
 
 
 def find_controller() -> ControllerDevice | None:
-    """PS5コントローラーを検索する.
-
-    コントローラーが接続されていない場合はエラーにせず None を返す.
+    """
+    Args:
+        なし。
+    Returns:
+        最適なController候補。見つからない場合はNone。
+    About:
+        接続済み入力デバイスを採点し、PS Controllerとして最適な候補を選ぶ。
     """
     best_device: InputDevice | None = None
     best_score = -1
@@ -210,11 +287,7 @@ def find_controller() -> ControllerDevice | None:
             if isinstance(raw_code, int):
                 absolute_codes.add(raw_code)
 
-        key_codes = {
-            raw_code
-            for raw_code in capabilities.get(ecodes.EV_KEY, [])
-            if isinstance(raw_code, int)
-        }
+        key_codes = {raw_code for raw_code in capabilities.get(ecodes.EV_KEY, []) if isinstance(raw_code, int)}
         score = _calculate_device_score(
             (device.name or "").lower(),
             absolute_codes,
@@ -229,5 +302,9 @@ def find_controller() -> ControllerDevice | None:
         logger.warning("コントローラーが接続されていません。")
         return None
 
-    logger.info("Controller: %s %s", best_device.path, best_device.name)
+    logger.info(
+        "Controllerを検出しました: path=%s name=%s",
+        best_device.path,
+        best_device.name,
+    )
     return ControllerDevice(best_device)
