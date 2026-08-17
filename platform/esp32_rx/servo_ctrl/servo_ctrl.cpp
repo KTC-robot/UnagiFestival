@@ -96,22 +96,3 @@ bool servoCtrlSetAllAngles(uint8_t angle) {
   }
   return succeeded;
 }
-
-void servoCtrlHandlePacket(const String& hex) {
-  if (hex.length() < 6) return;
-  const uint8_t channel = static_cast<uint8_t>(
-    strtoul(hex.substring(2, 4).c_str(), nullptr, 16)
-  );
-  const uint8_t angle = static_cast<uint8_t>(
-    strtoul(hex.substring(4, 6).c_str(), nullptr, 16)
-  );
-  servoCtrlSetAngle(channel, angle);
-}
-
-void servoCtrlHandleAllPacket(const String& hex) {
-  if (hex.length() < 4) return;
-  const uint8_t angle = static_cast<uint8_t>(
-    strtoul(hex.substring(2, 4).c_str(), nullptr, 16)
-  );
-  servoCtrlSetAllAngles(angle);
-}

@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 
-#include <Arduino.h>
 
 /**
  * @file servo_ctrl.h
@@ -44,9 +43,3 @@ bool servoCtrlSetAngle(uint8_t channel, uint8_t angle);
  * @return 全チャネルへの出力に成功した場合true。
  */
 bool servoCtrlSetAllAngles(uint8_t angle);
-
-/** @brief 移行期間中の個別サーボpacket入口。 */
-void servoCtrlHandlePacket(const String& hex);
-
-/** @brief 移行期間中の全サーボpacket入口。 */
-void servoCtrlHandleAllPacket(const String& hex);
