@@ -1,4 +1,4 @@
-#include "i2c_bus.hpp"
+#include "i2c/i2c_bus.hpp"
 
 #include "i2c/constants.h"
 
