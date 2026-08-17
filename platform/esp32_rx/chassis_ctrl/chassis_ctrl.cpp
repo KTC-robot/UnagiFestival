@@ -1,6 +1,6 @@
 #include "chassis_ctrl.h"
 
-#include "can_comm.h"
+#include "c620/c620_driver.hpp"
 #include "util.h"
 #include "chassis_ctrl/constants.h"
 #include "chassis_ctrl/mecanum.hpp"
@@ -144,7 +144,7 @@ float getWheelMeasuredRpm(int wheelIndex) {
 
   return applyMotorInverse(
     motorIndex,
-    static_cast<float>(canCommGetMotorRpm(motorIndex))
+    static_cast<float>(c620DriverGetMotorRpm(motorIndex))
   );
 }
 
@@ -154,7 +154,7 @@ int16_t getWheelCurrentCommand(int wheelIndex) {
   return static_cast<int16_t>(
     applyMotorInverse(
       motorIndex,
-      static_cast<float>(canCommGetCurrentCommand(motorIndex))
+      static_cast<float>(c620DriverGetCurrentCommand(motorIndex))
     )
   );
 }
@@ -191,7 +191,7 @@ void printMotorValues(float vx, float vy, float wz) {
     Serial.print(" I=");
     Serial.print(static_cast<int>(getWheelCurrentCommand(wheelIndex)));
     Serial.print(" C=");
-    Serial.print(static_cast<int>(canCommGetMotorTemperature(motorIndex)));
+    Serial.print(static_cast<int>(c620DriverGetMotorTemperature(motorIndex)));
 
     if (wheelIndex < NUM_WHEELS - 1) {
       Serial.print(" | ");
@@ -315,7 +315,7 @@ void chassisCtrlUpdate() {
     return;
   }
 
-  if (!canCommIsReady()) {
+  if (!c620DriverIsReady()) {
     return;
   }
 
@@ -353,14 +353,14 @@ void chassisCtrlUpdate() {
       maxRpmChange
     );
 
-    if (!canCommFeedbackFresh(motorIndex)) {
-      canCommSetCurrentCommand(motorIndex, 0);
+    if (!c620DriverFeedbackFresh(motorIndex)) {
+      c620DriverSetCurrentCommand(motorIndex, 0);
       speedControllers[motorIndex].reset();
       continue;
     }
 
     if (fabsf(rampedMotorRpm[motorIndex]) < 1.0f) {
-      canCommSetCurrentCommand(motorIndex, 0);
+      c620DriverSetCurrentCommand(motorIndex, 0);
       speedControllers[motorIndex].reset();
       continue;
     }
@@ -368,7 +368,7 @@ void chassisCtrlUpdate() {
     const SpeedControllerResult speedResult =
       speedControllers[motorIndex].update(
         rampedMotorRpm[motorIndex],
-        static_cast<float>(canCommGetMotorRpm(motorIndex)),
+        static_cast<float>(c620DriverGetMotorRpm(motorIndex)),
         dt
       );
 
@@ -379,7 +379,7 @@ void chassisCtrlUpdate() {
         }
         GainTuningAccumulator& stats = tuningStats[wheelIndex];
         const float absoluteRpm = fabsf(
-          static_cast<float>(canCommGetMotorRpm(motorIndex))
+          static_cast<float>(c620DriverGetMotorRpm(motorIndex))
         );
         ++stats.sampleCount;
         stats.absoluteRpmSum += static_cast<double>(absoluteRpm);
@@ -398,7 +398,7 @@ void chassisCtrlUpdate() {
         Serial.print(" TARGET=");
         Serial.print(rampedMotorRpm[motorIndex], 0);
         Serial.print(" ACTUAL=");
-        Serial.print(canCommGetMotorRpm(motorIndex));
+        Serial.print(c620DriverGetMotorRpm(motorIndex));
         Serial.print(" ERROR=");
         Serial.print(speedResult.error, 0);
         Serial.print(" P=");
@@ -415,7 +415,7 @@ void chassisCtrlUpdate() {
       }
     }
 
-    canCommSetCurrentCommand(
+    c620DriverSetCurrentCommand(
       motorIndex,
       speedResult.currentCommand
     );
@@ -495,11 +495,11 @@ void chassisCtrlStop() {
     requestedMotorRpm[motorIndex] = 0.0f;
     rampedMotorRpm[motorIndex] = 0.0f;
     speedControllers[motorIndex].reset();
-    canCommSetCurrentCommand(motorIndex, 0);
+    c620DriverSetCurrentCommand(motorIndex, 0);
   }
 
   motorsActive = false;
-  canCommZeroAllImmediate();
+  c620DriverZeroAllImmediate();
 }
 
 void chassisCtrlChangePower(int delta) {

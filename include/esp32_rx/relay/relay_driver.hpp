@@ -1,8 +1,8 @@
 #pragma once
 
 /**
- * @file relay_ctrl.hpp
- * @brief 前後の電磁弁用リレーを制御するAPIを提供する。
+ * @file relay_driver.hpp
+ * @brief 前後の電磁弁用GPIOリレーを操作するDriver APIを提供する。
  */
 
 /**
@@ -10,37 +10,37 @@
  *
  * @return 初期化が完了した場合true。
  */
-bool relayCtrlBegin();
+bool relayDriverBegin();
 
 /**
  * @brief 前側電磁弁のリレー状態を変更する。
  *
  * @param on trueの場合は電磁弁を励磁する。
  */
-void relayCtrlSetFront(bool on);
+void relayDriverSetFront(bool on);
 
 /**
  * @brief 後側電磁弁のリレー状態を変更する。
  *
  * @param on trueの場合は電磁弁を励磁する。
  */
-void relayCtrlSetRear(bool on);
+void relayDriverSetRear(bool on);
 
 /**
  * @brief 前側電磁弁がONか確認する。
  *
  * @return ONの場合true。
  */
-bool relayCtrlFrontOn();
+bool relayDriverFrontOn();
 
 /**
  * @brief 後側電磁弁がONか確認する。
  *
  * @return ONの場合true。
  */
-bool relayCtrlRearOn();
+bool relayDriverRearOn();
 
 /**
  * @brief 両電磁弁を安全側OFFへ強制する。
  */
-void relayCtrlForceOff();
+void relayDriverForceOff();

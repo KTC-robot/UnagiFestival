@@ -1,21 +1,21 @@
-#include "can_comm.h"
+#include "c620/c620_driver.hpp"
 
 #include <driver/twai.h>
-#include "can_comm/constants.h"
+#include "c620/constants.h"
 
-using namespace CanConfig_can_comm;
+using namespace C620Config;
 
 namespace {
 
 bool canReady = false;
 
-int16_t currentCommands[CAN_MOTOR_COUNT] = {};
-uint16_t rotorAngle[CAN_MOTOR_COUNT] = {};
-int16_t motorRpm[CAN_MOTOR_COUNT] = {};
-int16_t measuredCurrent[CAN_MOTOR_COUNT] = {};
-uint8_t motorTemperature[CAN_MOTOR_COUNT] = {};
-bool feedbackValid[CAN_MOTOR_COUNT] = {};
-uint32_t feedbackMs[CAN_MOTOR_COUNT] = {};
+int16_t currentCommands[C620_MOTOR_COUNT] = {};
+uint16_t rotorAngle[C620_MOTOR_COUNT] = {};
+int16_t motorRpm[C620_MOTOR_COUNT] = {};
+int16_t measuredCurrent[C620_MOTOR_COUNT] = {};
+uint8_t motorTemperature[C620_MOTOR_COUNT] = {};
+bool feedbackValid[C620_MOTOR_COUNT] = {};
+uint32_t feedbackMs[C620_MOTOR_COUNT] = {};
 
 uint32_t canTxCount = 0;
 uint32_t canFeedbackCount = 0;
@@ -31,7 +31,7 @@ int16_t readInt16BigEndian(uint8_t highByte, uint8_t lowByte) {
 int motorIndexFromFeedbackId(uint32_t identifier) {
   if (
     identifier < C620_FEEDBACK_ID_BASE ||
-    identifier >= C620_FEEDBACK_ID_BASE + CAN_MOTOR_COUNT
+    identifier >= C620_FEEDBACK_ID_BASE + C620_MOTOR_COUNT
   ) {
     return -1;
   }
@@ -48,7 +48,7 @@ bool sendCurrentFrame() {
   message.identifier = C620_COMMAND_ID;
   message.data_length_code = 8;
 
-  for (int motorIndex = 0; motorIndex < CAN_MOTOR_COUNT; ++motorIndex) {
+  for (int motorIndex = 0; motorIndex < C620_MOTOR_COUNT; ++motorIndex) {
     const int16_t command = currentCommands[motorIndex];
 
     message.data[motorIndex * 2] =
@@ -82,7 +82,7 @@ void handleFeedback(const twai_message_t& message) {
 
   const int motorIndex = motorIndexFromFeedbackId(message.identifier);
 
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return;
   }
 
@@ -103,7 +103,7 @@ void handleFeedback(const twai_message_t& message) {
 }
 }
 
-bool canCommBegin() {
+bool c620DriverBegin() {
   twai_general_config_t generalConfig = TWAI_GENERAL_CONFIG_DEFAULT(
     CAN_TX_PIN,
     CAN_RX_PIN,
@@ -144,11 +144,11 @@ bool canCommBegin() {
   return true;
 }
 
-bool canCommIsReady() {
+bool c620DriverIsReady() {
   return canReady;
 }
 
-void canCommReadFrames() {
+void c620DriverReadFrames() {
   if (!canReady) {
     return;
   }
@@ -164,7 +164,7 @@ void canCommReadFrames() {
   }
 }
 
-void canCommSendPeriodically() {
+void c620DriverSendPeriodically() {
   if (!canReady) {
     return;
   }
@@ -179,32 +179,32 @@ void canCommSendPeriodically() {
   sendCurrentFrame();
 }
 
-void canCommSetCurrentCommand(int motorIndex, int16_t command) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+void c620DriverSetCurrentCommand(int motorIndex, int16_t command) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return;
   }
 
   currentCommands[motorIndex] = command;
 }
 
-int16_t canCommGetCurrentCommand(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+int16_t c620DriverGetCurrentCommand(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return 0;
   }
 
   return currentCommands[motorIndex];
 }
 
-void canCommZeroAllImmediate() {
-  for (int motorIndex = 0; motorIndex < CAN_MOTOR_COUNT; ++motorIndex) {
+void c620DriverZeroAllImmediate() {
+  for (int motorIndex = 0; motorIndex < C620_MOTOR_COUNT; ++motorIndex) {
     currentCommands[motorIndex] = 0;
   }
 
   sendCurrentFrame();
 }
 
-bool canCommFeedbackFresh(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+bool c620DriverFeedbackFresh(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return false;
   }
 
@@ -212,43 +212,43 @@ bool canCommFeedbackFresh(int motorIndex) {
     millis() - feedbackMs[motorIndex] <= FEEDBACK_TIMEOUT_MS;
 }
 
-int16_t canCommGetMotorRpm(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+int16_t c620DriverGetMotorRpm(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return 0;
   }
 
   return motorRpm[motorIndex];
 }
 
-int16_t canCommGetMeasuredCurrent(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+int16_t c620DriverGetMeasuredCurrent(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return 0;
   }
 
   return measuredCurrent[motorIndex];
 }
 
-uint8_t canCommGetMotorTemperature(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+uint8_t c620DriverGetMotorTemperature(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return 0;
   }
 
   return motorTemperature[motorIndex];
 }
 
-uint16_t canCommGetRotorAngle(int motorIndex) {
-  if (motorIndex < 0 || motorIndex >= CAN_MOTOR_COUNT) {
+uint16_t c620DriverGetRotorAngle(int motorIndex) {
+  if (motorIndex < 0 || motorIndex >= C620_MOTOR_COUNT) {
     return 0;
   }
 
   return rotorAngle[motorIndex];
 }
 
-uint8_t canCommGetFeedbackMask() {
+uint8_t c620DriverGetFeedbackMask() {
   uint8_t mask = 0;
 
-  for (int motorIndex = 0; motorIndex < CAN_MOTOR_COUNT; ++motorIndex) {
-    if (canCommFeedbackFresh(motorIndex)) {
+  for (int motorIndex = 0; motorIndex < C620_MOTOR_COUNT; ++motorIndex) {
+    if (c620DriverFeedbackFresh(motorIndex)) {
       mask |= static_cast<uint8_t>(1U << motorIndex);
     }
   }
@@ -256,10 +256,10 @@ uint8_t canCommGetFeedbackMask() {
   return mask;
 }
 
-uint32_t canCommGetTxCount() {
+uint32_t c620DriverGetTxCount() {
   return canTxCount;
 }
 
-uint32_t canCommGetFeedbackCount() {
+uint32_t c620DriverGetFeedbackCount() {
   return canFeedbackCount;
 }
