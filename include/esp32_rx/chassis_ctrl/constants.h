@@ -37,7 +37,7 @@ constexpr int NUM_WHEELS = 4;
 // motor: ID1, ID2, ID3, ID4
 const uint8_t WHEEL_TO_MOTOR[NUM_WHEELS] = {0, 2, 1, 3};
 const uint8_t WHEEL_ESC_ID[NUM_WHEELS] = {1, 3, 2, 4};
-const char* WHEEL_NAME[NUM_WHEELS] = {"FL", "FR", "RL", "RR"};
+const char* const WHEEL_NAME[NUM_WHEELS] = {"FL", "FR", "RL", "RR"};
 
 const bool MOTOR_REVERSED[NUM_MOTORS] = {
   true,

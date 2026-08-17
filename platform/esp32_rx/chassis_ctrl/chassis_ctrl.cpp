@@ -3,6 +3,8 @@
 #include "can_comm.h"
 #include "util.h"
 #include "chassis_ctrl/constants.h"
+#include "chassis_ctrl/mecanum.hpp"
+#include "chassis_ctrl/speed_controller.hpp"
 
 #include <math.h>
 
@@ -15,7 +17,7 @@ float longitudinalCommand = 0.0f;
 
 float requestedMotorRpm[NUM_MOTORS] = {};
 float rampedMotorRpm[NUM_MOTORS] = {};
-float pidIntegral[NUM_MOTORS] = {};
+SpeedController speedControllers[NUM_MOTORS] = {};
 float wheelGainFwd[NUM_WHEELS] = {};
 float wheelGainBwd[NUM_WHEELS] = {};
 float wheelGainRight[NUM_WHEELS] = {};
@@ -98,16 +100,6 @@ void finishGainTuning() {
 
 float applyMotorInverse(int motorIndex, float value) {
   return MOTOR_REVERSED[motorIndex] ? -value : value;
-}
-
-int16_t clampCurrentCommand(float value) {
-  value = constrain(
-    value,
-    -static_cast<float>(MAX_CURRENT_COMMAND),
-    static_cast<float>(MAX_CURRENT_COMMAND)
-  );
-
-  return static_cast<int16_t>(lroundf(value));
 }
 
 int16_t snapTargetRpm(int16_t target) {
@@ -238,39 +230,23 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
     return;
   }
 
-  float wheel[NUM_WHEELS] = {};
+  MecanumComponents mecanum = calculateMecanumComponents(vx, vy, wz);
 
   for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
-    float forward = static_cast<float>(FWD_SIGN[wheelIndex]) * vx;
-    float strafe = static_cast<float>(STR_SIGN[wheelIndex]) * vy;
-    const float yaw = static_cast<float>(YAW_SIGN[wheelIndex]) * wz;
-
     if (commandDirectionVx > 0.0f) {
-      forward *= wheelGainFwd[wheelIndex];
+      mecanum.forward[wheelIndex] *= wheelGainFwd[wheelIndex];
     } else if (commandDirectionVx < 0.0f) {
-      forward *= wheelGainBwd[wheelIndex];
+      mecanum.forward[wheelIndex] *= wheelGainBwd[wheelIndex];
     }
 
     if (vy > 0.0f) {
-      strafe *= wheelGainRight[wheelIndex];
+      mecanum.strafe[wheelIndex] *= wheelGainRight[wheelIndex];
     } else if (vy < 0.0f) {
-      strafe *= wheelGainLeft[wheelIndex];
-    }
-
-    wheel[wheelIndex] = forward + strafe + yaw;
-  }
-
-  float maxMagnitude = 0.0f;
-
-  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
-    maxMagnitude = max(maxMagnitude, fabsf(wheel[wheelIndex]));
-  }
-
-  if (maxMagnitude > 1.0f) {
-    for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
-      wheel[wheelIndex] /= maxMagnitude;
+      mecanum.strafe[wheelIndex] *= wheelGainLeft[wheelIndex];
     }
   }
+
+  const MecanumOutput mecanumOutput = combineAndNormalizeMecanum(mecanum);
 
   float selectedDriveScale = driveScaleOther;
   if (commandDirectionVx > 0.0f) {
@@ -293,7 +269,7 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
 
   for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
     const int16_t wheelRpm =
-      static_cast<int16_t>(lroundf(wheel[wheelIndex] * maxRpm));
+      static_cast<int16_t>(lroundf(mecanumOutput.wheel[wheelIndex] * maxRpm));
 
     const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
 
@@ -379,50 +355,22 @@ void chassisCtrlUpdate() {
 
     if (!canCommFeedbackFresh(motorIndex)) {
       canCommSetCurrentCommand(motorIndex, 0);
-      pidIntegral[motorIndex] = 0.0f;
+      speedControllers[motorIndex].reset();
       continue;
     }
 
     if (fabsf(rampedMotorRpm[motorIndex]) < 1.0f) {
       canCommSetCurrentCommand(motorIndex, 0);
-      pidIntegral[motorIndex] = 0.0f;
+      speedControllers[motorIndex].reset();
       continue;
     }
 
-    const float error =
-      rampedMotorRpm[motorIndex] -
-      static_cast<float>(canCommGetMotorRpm(motorIndex));
-
-    const float integralOld = pidIntegral[motorIndex];
-
-    float integralCandidate = integralOld + error * dt;
-    integralCandidate = constrain(
-      integralCandidate,
-      -PID_INTEGRAL_LIMIT,
-      PID_INTEGRAL_LIMIT
-    );
-
-    const float outputCandidate =
-      SPEED_KP * error + SPEED_KI * integralCandidate;
-
-    const bool saturatedHigh =
-      outputCandidate >= static_cast<float>(MAX_CURRENT_COMMAND);
-
-    const bool saturatedLow =
-      outputCandidate <= -static_cast<float>(MAX_CURRENT_COMMAND);
-
-    const bool allowIntegral =
-      (!saturatedHigh && !saturatedLow) ||
-      (saturatedHigh && error < 0.0f) ||
-      (saturatedLow && error > 0.0f);
-
-    const float integralUsed =
-      allowIntegral ? integralCandidate : integralOld;
-
-    const float output =
-      SPEED_KP * error + SPEED_KI * integralUsed;
-
-    const int16_t currentCommand = clampCurrentCommand(output);
+    const SpeedControllerResult speedResult =
+      speedControllers[motorIndex].update(
+        rampedMotorRpm[motorIndex],
+        static_cast<float>(canCommGetMotorRpm(motorIndex)),
+        dt
+      );
 
     if (tuningActive && tuningSamplingStarted) {
       for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
@@ -452,26 +400,25 @@ void chassisCtrlUpdate() {
         Serial.print(" ACTUAL=");
         Serial.print(canCommGetMotorRpm(motorIndex));
         Serial.print(" ERROR=");
-        Serial.print(error, 0);
+        Serial.print(speedResult.error, 0);
         Serial.print(" P=");
-        Serial.print(SPEED_KP * error, 0);
+        Serial.print(SPEED_KP * speedResult.error, 0);
         Serial.print(" I=");
-        Serial.print(SPEED_KI * integralUsed, 0);
+        Serial.print(SPEED_KI * speedResult.integral, 0);
         Serial.print(" OUT=");
-        Serial.print(output, 0);
+        Serial.print(speedResult.output, 0);
         Serial.print(" SAT=");
         Serial.println(
-          fabsf(output) >= static_cast<float>(MAX_CURRENT_COMMAND) ? 1 : 0
+          fabsf(speedResult.output) >=
+            static_cast<float>(MAX_CURRENT_COMMAND) ? 1 : 0
         );
       }
     }
 
     canCommSetCurrentCommand(
       motorIndex,
-      currentCommand
+      speedResult.currentCommand
     );
-
-    pidIntegral[motorIndex] = integralUsed;
   }
 
   if (printTuningLog) {
@@ -547,7 +494,7 @@ void chassisCtrlStop() {
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
     requestedMotorRpm[motorIndex] = 0.0f;
     rampedMotorRpm[motorIndex] = 0.0f;
-    pidIntegral[motorIndex] = 0.0f;
+    speedControllers[motorIndex].reset();
     canCommSetCurrentCommand(motorIndex, 0);
   }
 
