@@ -1,4 +1,8 @@
-"""IM920-HAT通信Facadeを提供する."""
+"""
+IM920通信moduleの公開APIを定義する。
+
+外部moduleから利用するClientと生成関数のみを公開し、通信の内部実装を隠蔽する。
+"""
 
 from unagifestival.tools.ps_controller.im920.client import (
     IM920Client,

@@ -9,7 +9,15 @@ from unagifestival.tools.ps_controller.enum import (
 
 @dataclass(frozen=True)
 class AxisInfo:
-    """コントローラー軸の現在値と範囲情報."""
+    """
+    Properties:
+        value: Controller接続時の軸値。
+        minimum: 軸が取り得る最小値。
+        maximum: 軸が取り得る最大値。
+
+    About:
+        Controller軸の初期値と正規化に必要な入力範囲を保持する。
+    """
 
     value: int | None
     minimum: int
@@ -22,7 +30,14 @@ type AxisInfoMap = dict[AxisCode, AxisInfo]
 
 @dataclass
 class ControllerState:
-    """実行中に更新されるコントローラー軸状態."""
+    """
+    Properties:
+        axis_values: 軸ごとの最新入力値。
+        axis_info: 軸ごとの入力範囲情報。
+
+    About:
+        Handlerが走行Commandを生成するためのController状態を保持する。
+    """
 
     axis_values: AxisValueMap
     axis_info: AxisInfoMap
@@ -30,7 +45,14 @@ class ControllerState:
 
 @dataclass(frozen=True)
 class AxisInputEvent:
-    """軸種別と現在値を組み合わせた入力イベント."""
+    """
+    Properties:
+        code: 入力されたController軸。
+        value: 軸のraw入力値。
+
+    About:
+        evdevの絶対軸入力をapplicationで扱うイベントとして保持する。
+    """
 
     code: AxisCode
     value: int
@@ -38,7 +60,14 @@ class AxisInputEvent:
 
 @dataclass(frozen=True)
 class ButtonEvent:
-    """ボタン種別と押下状態を組み合わせた入力イベント."""
+    """
+    Properties:
+        code: 入力されたControllerボタン。
+        state: ボタンの押下状態。
+
+    About:
+        evdevのキー入力をapplicationで扱うイベントとして保持する。
+    """
 
     code: ButtonCode
     state: ButtonState

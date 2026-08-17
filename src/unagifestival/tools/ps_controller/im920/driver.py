@@ -1,4 +1,8 @@
-"""GPIO/I2CでIM920-HATを制御する低レイヤdriver."""
+"""
+GPIOとI2CでIM920-HATを制御する低レイヤdriverを提供する。
+
+送受信、再起動、受信buffer管理、hardware resource解放を担当する。
+"""
 
 import contextlib
 import time
@@ -19,9 +23,22 @@ from unagifestival.tools.ps_controller.im920.constants import (
 
 
 class IM920HatDriver:
-    """IM920-HATをI2C経由で読み書きする."""
+    """
+    Properties:
+        なし。
+    About:
+        GPIOとI2Cを利用してIM920-HATのcommand送信とframe受信を行う。
+    """
 
     def __init__(self, slave_address: int) -> None:
+        """
+        Args:
+            slave_address: IM920-HATのI2C slave address。
+        Returns:
+            なし。
+        About:
+            GPIO、I2C、受信bufferを初期化し、IM920-HATを再起動する。
+        """
         self._head = 0
         self._tail = 0
         self._count = 0
@@ -44,13 +61,28 @@ class IM920HatDriver:
         self._reboot()
 
     def _reboot(self) -> None:
+        """
+        Args:
+            なし。
+        Returns:
+            なし。
+        About:
+            reset端子を操作してIM920-HATを再起動する。
+        """
         GPIO.output(RESET_PIN, 0)
         time.sleep(0.5)
         GPIO.output(RESET_PIN, 1)
         time.sleep(0.5)
 
     def write(self, command: str) -> None:
-        """IM920-HATへcommand文字列を送信する."""
+        """
+        Args:
+            command: IM920-HATへ送るcommand文字列。
+        Returns:
+            なし。
+        About:
+            BUSY状態の解除を待ち、I2C経由でcommandを書き込む。
+        """
         if not command:
             return
         if command[0] != "?":
@@ -63,7 +95,14 @@ class IM920HatDriver:
         )
 
     def read(self) -> str:
-        """IM920-HATから受信済みframeを最大1件返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            受信済みframe。データがない場合は空文字列。
+        About:
+            IRQを確認してI2C dataをbufferへ取り込み、最大1件のframeを返す。
+        """
         if GPIO.input(IRQ_PIN) == GPIO.HIGH:
             for _ in range(RX_DRAIN_LIMIT):
                 if GPIO.input(IRQ_PIN) != GPIO.HIGH or not self._read_from_i2c():
@@ -76,6 +115,14 @@ class IM920HatDriver:
         return frame
 
     def _read_from_i2c(self) -> bool:
+        """
+        Args:
+            なし。
+        Returns:
+            1件のframeをbufferへ格納できた場合はTrue、それ以外はFalse。
+        About:
+            I2Cから通知長分の文字を読み取り、ring bufferへ保存する。
+        """
         try:
             received_length = self._i2c.read_byte(self._slave_address)
         except OSError:
@@ -102,7 +149,14 @@ class IM920HatDriver:
         return True
 
     def close(self) -> None:
-        """I2CとGPIO resourceを解放する."""
+        """
+        Args:
+            なし。
+        Returns:
+            なし。
+        About:
+            I2C busを閉じ、例外の有無にかかわらずGPIO resourceを解放する。
+        """
         try:
             self._i2c.close()
         finally:

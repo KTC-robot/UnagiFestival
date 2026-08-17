@@ -18,19 +18,46 @@ from unagifestival.tools.ps_controller.servo.validate import validate_servo_conf
 
 
 class ServoMapper:
-    """Controllerイベントを送信可能なサーボ指令へ変換する."""
+    """
+    Properties:
+        startup_interval_seconds: 起動時の個別Servo送信間隔。
+    About:
+        ControllerイベントをServo Commandへ変換し、toggle状態を管理する。
+    """
 
     def __init__(self) -> None:
+        """
+        Args:
+            なし。
+        Returns:
+            なし。
+        About:
+            Servo設定を検証し、toggle状態を初期化する。
+        """
         validate_servo_config()
         self._toggle_state: dict[ServoToggleKey, bool] = {}
 
     @property
     def startup_interval_seconds(self) -> float:
-        """起動時の個別サーボ指令間隔を返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            起動時の個別Servo Command送信間隔を秒で表した値。
+        About:
+            設定済みの起動時送信間隔を公開する。
+        """
         return SERVO_STARTUP_INTERVAL_SECONDS
 
     def startup_commands(self) -> tuple[ServoSetCommand, ...]:
-        """起動時に必要なhome指令を返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            有効な各Servoに対する起動時home Command。
+        About:
+            home送信が有効な場合だけ起動時Commandを生成する。
+        """
         if not SERVO_SEND_HOME_ON_START:
             return ()
         return tuple(
@@ -40,17 +67,21 @@ class ServoMapper:
         )
 
     def map_button(self, event: ButtonEvent) -> tuple[ServoSetCommand, ...]:
-        """押下イベントをdirect/toggleサーボ指令へ変換する."""
+        """
+        Args:
+            event: 変換対象のControllerボタンイベント。
+        Returns:
+            direct操作とtoggle操作から生成したServo Command。
+        About:
+            押下イベントを設定済みのServo操作へ変換し、toggle状態を更新する。
+        """
         if event.state is not ButtonState.PRESSED:
             return ()
 
         commands: list[ServoSetCommand] = [
-            ServoSetCommand(action.channel, action.angle)
-            for action in SERVO_BUTTON_ACTIONS.get(event.code, ())
+            ServoSetCommand(action.channel, action.angle) for action in SERVO_BUTTON_ACTIONS.get(event.code, ())
         ]
-        for action_index, action in enumerate(
-            SERVO_TOGGLE_ACTIONS.get(event.code, ())
-        ):
+        for action_index, action in enumerate(SERVO_TOGGLE_ACTIONS.get(event.code, ())):
             key = ServoToggleKey(event.code, action_index)
             use_angle_b = self._toggle_state.get(key, False)
             angle = action.angle_b if use_angle_b else action.angle_a
@@ -60,10 +91,24 @@ class ServoMapper:
 
     @staticmethod
     def open_all() -> ServoSetAllCommand:
-        """全サーボOPEN指令を返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            全ServoをOPEN角度へ設定するCommand。
+        About:
+            設定済みのOPEN角度を使った一括操作Commandを生成する。
+        """
         return ServoSetAllCommand(SERVO_ALL_OPEN_ANGLE)
 
     @staticmethod
     def close_all() -> ServoSetAllCommand:
-        """全サーボCLOSE指令を返す."""
+        """
+        Args:
+            なし。
+        Returns:
+            全ServoをCLOSE角度へ設定するCommand。
+        About:
+            設定済みのCLOSE角度を使った一括操作Commandを生成する。
+        """
         return ServoSetAllCommand(SERVO_ALL_CLOSE_ANGLE)

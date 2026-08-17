@@ -4,14 +4,39 @@ from unagifestival.tools.ps_controller.im920.model import IM920Device
 
 
 class IM920Receiver:
-    """IM920-HATからraw frameを欠落させず1件ずつ取り出す."""
+    """
+    Properties:
+        なし。
+
+    About:
+        IM920-HATから取得したraw dataをframe単位で保持し、1件ずつ返す。
+    """
 
     def __init__(self, device: IM920Device) -> None:
+        """
+        Args:
+            device: raw dataを読み取るIM920 device。
+
+        Returns:
+            なし。
+
+        About:
+            読み取り元deviceと未返却frame用queueを初期化する。
+        """
         self._device = device
         self._pending: deque[str] = deque()
 
     def read(self) -> str:
-        """受信済みraw frameを最大1件返す."""
+        """
+        Args:
+            なし。
+
+        Returns:
+            受信済みraw frame。データがない場合は空文字列。
+
+        About:
+            複数frameを分割して保持し、呼び出しごとに最大1件返す。
+        """
         if self._pending:
             return self._pending.popleft()
         raw = self._device.read()

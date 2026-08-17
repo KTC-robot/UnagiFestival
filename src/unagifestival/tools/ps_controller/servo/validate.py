@@ -22,20 +22,22 @@ DRIVE_RESERVED_BUTTONS = {
 
 
 def validate_servo_target(button: ButtonCode, command: ServoSetCommand) -> None:
-    """ボタン割り当ての論理チャネルと角度を検証する."""
+    """
+    Args:
+        button: Servo操作を割り当てるControllerボタン。
+        command: 検証対象のServo Command。
+    Returns:
+        なし。
+    About:
+        ボタン割り当ての論理channel、有効状態、角度範囲を検証する。
+    """
     if not 0 <= command.channel < SERVO_CHANNEL_COUNT:
-        message = (
-            f"Invalid servo channel: button={button.display_name} "
-            f"channel={command.channel}"
-        )
+        message = f"Invalid servo channel: button={button.display_name} channel={command.channel}"
         raise ValueError(message)
 
     config = SERVO_CHANNELS[command.channel]
     if not config.enabled:
-        message = (
-            f"Servo CH{command.channel} is assigned to button "
-            f"{button.display_name}, but the channel is disabled."
-        )
+        message = f"Servo CH{command.channel} is assigned to button {button.display_name}, but the channel is disabled."
         raise ValueError(message)
     if not config.min_angle <= command.angle <= config.max_angle:
         message = (
@@ -47,10 +49,18 @@ def validate_servo_target(button: ButtonCode, command: ServoSetCommand) -> None:
 
 
 def _validate_actions() -> None:
+    """
+    Args:
+        なし。
+    Returns:
+        なし。
+    About:
+        direct操作とtoggle操作の割り当てを検証し、競合を警告する。
+    """
     for button, actions in SERVO_BUTTON_ACTIONS.items():
         if button in DRIVE_RESERVED_BUTTONS:
             logger.warning(
-                "[SERVO] Button %s is also used by chassis control.",
+                "[SERVO] ボタンは車体制御でも使用されています: %s",
                 button.display_name,
             )
         for action in actions:
@@ -62,7 +72,7 @@ def _validate_actions() -> None:
     for button, actions in SERVO_TOGGLE_ACTIONS.items():
         if button in DRIVE_RESERVED_BUTTONS:
             logger.warning(
-                "[SERVO] Button %s is also used by chassis control.",
+                "[SERVO] ボタンは車体制御でも使用されています: %s",
                 button.display_name,
             )
         for action in actions:
@@ -78,26 +88,27 @@ def _validate_actions() -> None:
     duplicate_buttons = set(SERVO_BUTTON_ACTIONS) & set(SERVO_TOGGLE_ACTIONS)
     for button in sorted(duplicate_buttons, key=lambda item: item.code):
         logger.warning(
-            "[SERVO] Button %s has both direct and toggle actions.",
+            "[SERVO] ボタンにdirect操作とtoggle操作が重複しています: %s",
             button.display_name,
         )
 
 
 def validate_servo_config() -> None:
-    """サーボ設定と全ボタンmappingを検証する."""
+    """
+    Args:
+        なし。
+    Returns:
+        なし。
+    About:
+        Servo channel設定、角度範囲、home角度、全ボタンmappingを検証する。
+    """
     if len(SERVO_CHANNELS) != SERVO_CHANNEL_COUNT:
-        message = (
-            f"SERVO_CHANNELS must contain {SERVO_CHANNEL_COUNT} values, "
-            f"but contains {len(SERVO_CHANNELS)}"
-        )
+        message = f"SERVO_CHANNELS must contain {SERVO_CHANNEL_COUNT} values, but contains {len(SERVO_CHANNELS)}"
         raise ValueError(message)
 
     for channel, config in enumerate(SERVO_CHANNELS):
         if not 0 <= config.min_angle <= config.max_angle <= SERVO_ANGLE_MAX:
-            message = (
-                f"Invalid servo angle range: CH{channel} "
-                f"min={config.min_angle} max={config.max_angle}"
-            )
+            message = f"Invalid servo angle range: CH{channel} min={config.min_angle} max={config.max_angle}"
             raise ValueError(message)
         if not config.min_angle <= config.home_angle <= config.max_angle:
             message = (

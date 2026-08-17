@@ -42,10 +42,27 @@ from unagifestival.tools.ps_controller.servo.model import (
 
 
 def _byte_to_hex(value: int) -> str:
+    """
+    Args:
+        value: 1byteとして変換する整数値。
+    Returns:
+        下位8bitを2桁の16進数で表した文字列。
+    About:
+        wire packetへ格納する数値を固定長の16進数へ変換する。
+    """
     return f"{value & 0xFF:02X}"
 
 
 def _control(command: ControlCommand, parameters: str = "") -> EncodedPacket:
+    """
+    Args:
+        command: CONTROL packetへ格納するCommand ID。
+        parameters: Command IDに続ける16進数parameter。
+    Returns:
+        CONTROL種別としてencodeしたpacket。
+    About:
+        packet種別、Command ID、parameterを送信payloadへ結合する。
+    """
     payload = _byte_to_hex(PacketType.CONTROL)
     payload += _byte_to_hex(command)
     return EncodedPacket(payload + parameters, f"CONTROL {command.name}")
@@ -54,7 +71,14 @@ def _control(command: ControlCommand, parameters: str = "") -> EncodedPacket:
 def encode_command(  # noqa: C901, PLR0911, PLR0912
     command: IM920Command,
 ) -> EncodedPacket:
-    """意味CommandをIM920 TXDA用hex payloadへ変換する."""
+    """
+    Args:
+        command: encode対象の意味Command。
+    Returns:
+        IM920のTXDAで送信できる16進数payloadとlabel。
+    About:
+        Commandの型に応じて値を検証し、対応するwire packetへ変換する。
+    """
     if isinstance(command, StopCommand):
         return _control(ControlCommand.STOP)
     if isinstance(command, EmergencyStopCommand):

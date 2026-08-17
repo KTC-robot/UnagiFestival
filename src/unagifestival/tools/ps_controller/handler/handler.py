@@ -35,25 +35,54 @@ logger = logging.getLogger("unagi_log")
 
 
 class Handler:
-    """Controller入力から意味Command生成・IM920送受信までを制御する."""
+    """
+    Properties:
+        im920: IM920との送受信を行うClient。
+        commands: ロボット制御Commandを生成するFactory。
+        servo_mapper: Controller入力をServo操作へ変換するMapper。
+
+    About:
+        Controller入力から走行、停止、Servo操作のCommandを生成して送信する。
+        周期処理とIM920 responseの受信も管理する。
+    """
 
     def __init__(
         self,
         im920: IM920ClientProtocol | None = None,
         servo_mapper: ServoMapper | None = None,
     ) -> None:
+        """
+        Args:
+            im920: 注入するIM920 Client。未指定時はenterで実機Clientを生成する。
+            servo_mapper: 注入するServoMapper。未指定時は標準設定で生成する。
+
+        Returns:
+            なし。
+
+        About:
+            Handlerの依存関係とCommand生成器を保持し、設定を検証する。
+        """
         validate_handler_config()
         self.im920 = im920
         self.commands = CommandFactory()
         self.servo_mapper = servo_mapper or ServoMapper()
 
     def enter(self) -> None:
-        """Handlerを開始し、設定されていればサーボhome指令を送る."""
+        """
+        Args:
+            なし。
+
+        Returns:
+            なし。
+
+        About:
+            必要に応じて実機Clientを生成し、設定されたServo home指令を送る。
+        """
         if self.im920 is None:
             self.im920 = create_im920_client(logger=logger)
 
         im920 = self._get_im920()
-        logger.info("[ROBOT] PS5 Controller -> IM920-HAT sender start")
+        logger.info("[ROBOT] PS ControllerからIM920-HATへの送信処理を開始します")
         commands = self.servo_mapper.startup_commands()
         for index, command in enumerate(commands):
             im920.send(command)
@@ -61,17 +90,35 @@ class Handler:
                 time.sleep(self.servo_mapper.startup_interval_seconds)
 
     def exit(self) -> None:
-        """IM920-HATのresourceを解放する."""
-        logger.info("[ROBOT] 制御終了")
+        """
+        Args:
+            なし。
+
+        Returns:
+            なし。
+
+        About:
+            初期化済みの場合にIM920-HATのhardware resourceを解放する。
+        """
+        logger.info("[ROBOT] 制御処理を終了します")
         if self.im920 is None:
             return
         try:
             self.im920.close()
         except Exception:  # noqa: BLE001
-            logger.warning("[ROBOT] IM920 cleanup failed", exc_info=True)
+            logger.warning("[ROBOT] IM920の終了処理に失敗しました", exc_info=True)
 
     def _get_im920(self) -> IM920ClientProtocol:
-        """初期化済みのIM920 Clientを返す."""
+        """
+        Args:
+            なし。
+
+        Returns:
+            初期化済みのIM920 Client。
+
+        About:
+            enterより前の通信操作を検出し、未初期化時は例外を送出する。
+        """
         if self.im920 is None:
             msg = "Handler.enter() must be called before use"
             raise RuntimeError(msg)
@@ -79,7 +126,17 @@ class Handler:
 
     @staticmethod
     def _normalize_axis(value: int, axis_info: AxisInfo | None) -> int:
-        """スティック入力を-127〜127へ正規化する."""
+        """
+        Args:
+            value: Controller軸のraw入力値。
+            axis_info: 軸の最小値と最大値を含む情報。
+
+        Returns:
+            deadzone適用後に送信範囲へ正規化した値。
+
+        About:
+            Controllerごとの入力範囲を走行Command用の共通範囲へ変換する。
+        """
         if axis_info is None or axis_info.maximum == axis_info.minimum:
             return 0
         center = (axis_info.minimum + axis_info.maximum) / 2.0
@@ -92,18 +149,35 @@ class Handler:
 
     @staticmethod
     def _is_trigger_pressed(state: ControllerState, axis: AxisCode) -> bool:
-        """指定triggerが設定比率以上押されているか返す."""
+        """
+        Args:
+            state: 最新のController状態。
+            axis: 判定対象のトリガー軸。
+
+        Returns:
+            設定比率以上押されている場合はTrue、それ以外はFalse。
+
+        About:
+            トリガー入力をslow modeの有効判定へ変換する。
+        """
         axis_info = state.axis_info.get(axis)
         if axis_info is None or axis_info.maximum <= axis_info.minimum:
             return False
         value = state.axis_values.get(axis, axis_info.minimum)
-        pressed_ratio = (value - axis_info.minimum) / (
-            axis_info.maximum - axis_info.minimum
-        )
+        pressed_ratio = (value - axis_info.minimum) / (axis_info.maximum - axis_info.minimum)
         return pressed_ratio >= TRIGGER_ACTIVE_RATIO
 
     def _make_drive_command(self, state: ControllerState) -> DriveCommand:
-        """現在のstick/trigger状態から走行Commandを生成する."""
+        """
+        Args:
+            state: 最新のController状態。
+
+        Returns:
+            stickとtriggerの状態から生成した走行Command。
+
+        About:
+            各軸を正規化し、必要に応じてslow mode係数を適用する。
+        """
         lx = self._normalize_axis(
             state.axis_values.get(AxisCode.LEFT_STICK_X, 0),
             state.axis_info.get(AxisCode.LEFT_STICK_X),
@@ -130,23 +204,42 @@ class Handler:
         return self.commands.drive(vx, vy, wz)
 
     def handle_axis(self, event: AxisInputEvent, state: ControllerState) -> None:
-        """軸状態を更新し、DPAD上下を全サーボ操作へ変換する."""
+        """
+        Args:
+            event: 受信したController軸イベント。
+            state: 更新対象のController状態。
+
+        Returns:
+            なし。
+
+        About:
+            軸状態を更新し、DPAD上下入力を全Servo操作へ変換して送信する。
+        """
         state.axis_values[event.code] = event.value
         if event.code is not AxisCode.DPAD_Y:
             return
         if event.value == -1:
             command = self.servo_mapper.open_all()
-            logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", command.angle)
+            logger.info("[SERVO] 全channelへ送信します: CH0-6 ANGLE=%d", command.angle)
             self._get_im920().send(command)
         elif event.value == 1:
             command = self.servo_mapper.close_all()
-            logger.info("[SERVO] SEND ALL CH0-6 ANGLE=%d", command.angle)
+            logger.info("[SERVO] 全channelへ送信します: CH0-6 ANGLE=%d", command.angle)
             self._get_im920().send(command)
 
     def handle_button(self, event: ButtonEvent) -> None:
-        """ボタンを足回り操作またはサーボCommandへ変換して送信する."""
+        """
+        Args:
+            event: 受信したControllerボタンイベント。
+
+        Returns:
+            なし。
+
+        About:
+            ボタン入力を車体操作またはServo Commandへ変換して送信する。
+        """
         logger.info(
-            "[ROBOT] BUTTON %s state=%s",
+            "[ROBOT] ボタン入力: button=%s state=%s",
             event.code.display_name,
             event.state.name,
         )
@@ -167,7 +260,7 @@ class Handler:
 
         for servo_command in self.servo_mapper.map_button(event):
             logger.info(
-                "[SERVO] SEND CH=%d ANGLE=%d",
+                "[SERVO] 個別channelへ送信します: CH=%d ANGLE=%d",
                 servo_command.channel,
                 servo_command.angle,
             )
@@ -179,11 +272,22 @@ class Handler:
         state: ControllerState,
         last_send: float,
     ) -> float:
-        """responseをpollし、設定周期で最新走行Commandを送信する."""
+        """
+        Args:
+            now: 現在時刻を秒で表した値。
+            state: 最新のController状態。
+            last_send: 前回走行Commandを送信した時刻。
+
+        Returns:
+            走行Commandを最後に送信した時刻。
+
+        About:
+            IM920 responseをpollし、設定周期に達した場合は走行Commandを送る。
+        """
         im920 = self._get_im920()
         response = im920.poll()
         if response is not None:
-            logger.info("[ROBOT] ESP32 TEXT <- %s", response.text)
+            logger.info("[ROBOT] ESP32から文字列を受信しました: %s", response.text)
             print("ESP32 <-", response.text)  # noqa: T201
         if now - last_send < (1.0 / DRIVE_HZ):
             return last_send

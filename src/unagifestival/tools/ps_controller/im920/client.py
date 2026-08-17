@@ -18,17 +18,63 @@ from unagifestival.tools.ps_controller.im920.transmitter import IM920Transmitter
 
 
 class IM920ClientProtocol(Protocol):
-    """Handlerが依存するIM920 Facade interface."""
+    """
+    Properties:
+        なし。
 
-    def send(self, command: IM920Command) -> None: ...
+    About:
+        Handlerが利用するIM920送受信Facadeのinterfaceを定義する。
+    """
 
-    def poll(self) -> IM920Response | None: ...
+    def send(self, command: IM920Command) -> None:
+        """
+        Args:
+            command: ESP32へ送信する意味Command。
 
-    def close(self) -> None: ...
+        Returns:
+            なし。
+
+        About:
+            意味CommandをIM920経由で送信する。
+        """
+        ...
+
+    def poll(self) -> IM920Response | None:
+        """
+        Args:
+            なし。
+
+        Returns:
+            受信データがある場合は復号済みResponse、ない場合はNone。
+
+        About:
+            IM920からapplication responseを最大1件取得する。
+        """
+        ...
+
+    def close(self) -> None:
+        """
+        Args:
+            なし。
+
+        Returns:
+            なし。
+
+        About:
+            IM920通信で所有するhardware resourceを解放する。
+        """
+        ...
 
 
 class IM920Client:
-    """Command送信とapplication response受信を公開するFacade."""
+    """
+    Properties:
+        なし。
+
+    About:
+        Encoder、Transmitter、Receiver、Decoderを束ね、意味Commandの送信と
+        application responseの受信だけを外部へ公開するFacade。
+    """
 
     def __init__(
         self,
@@ -37,6 +83,18 @@ class IM920Client:
         command_max_length: int = IM920_COMMAND_MAX_LENGTH,
         logger: logging.Logger | None = None,
     ) -> None:
+        """
+        Args:
+            device: IM920-HATの低レイヤ入出力を提供するdevice。
+            command_max_length: 送信可能なcommand文字列の最大長。
+            logger: 通信ログの出力先。
+
+        Returns:
+            なし。
+
+        About:
+            送受信処理を構成し、利用するdeviceとloggerを保持する。
+        """
         self._device = device
         self._logger = logger or logging.getLogger("unagi_log")
         self._transmitter = IM920Transmitter(
@@ -47,23 +105,50 @@ class IM920Client:
         self._receiver = IM920Receiver(device)
 
     def send(self, command: IM920Command) -> None:
-        """意味CommandをencodeしてIM920-HATへ送信する."""
+        """
+        Args:
+            command: ESP32へ送信する意味Command。
+
+        Returns:
+            なし。
+
+        About:
+            意味Commandをpacketへencodeし、TransmitterからIM920-HATへ送る。
+        """
         self._transmitter.send(encode_command(command))
 
     def poll(self) -> IM920Response | None:
-        """受信frameを最大1件取得しapplication responseへ復号する."""
+        """
+        Args:
+            なし。
+
+        Returns:
+            正常なframeを受信した場合は復号済みResponse、データがない場合はNone。
+
+        About:
+            Receiverからraw frameを取得し、application responseへ復号する。
+        """
         try:
             raw = self._receiver.read()
         except Exception:  # noqa: BLE001
-            self._logger.warning("[ROBOT] IM920 read failed", exc_info=True)
+            self._logger.warning("[ROBOT] IM920の受信処理に失敗しました", exc_info=True)
             return None
         if not raw:
             return None
-        self._logger.debug("[ROBOT] IM920 <- %r", raw)
+        self._logger.debug("[ROBOT] IM920からraw frameを受信しました: %r", raw)
         return decode_frame(raw)
 
     def close(self) -> None:
-        """IM920-HATのhardware resourceを解放する."""
+        """
+        Args:
+            なし。
+
+        Returns:
+            なし。
+
+        About:
+            IM920-HAT deviceが所有するhardware resourceを解放する。
+        """
         self._device.close()
 
 
@@ -71,7 +156,16 @@ def create_im920_client(
     *,
     logger: logging.Logger | None = None,
 ) -> IM920Client:
-    """実機IM920-HAT driverを使用するClientを生成する."""
+    """
+    Args:
+        logger: Clientが通信ログに使用するlogger。
+
+    Returns:
+        実機IM920-HAT driverを使用するClient。
+
+    About:
+        hardware依存moduleを遅延importし、実機通信用Clientを生成する。
+    """
     # Hardware依存moduleはfake Clientのテスト時にRPi.GPIOを要求しないよう遅延importする。
     from unagifestival.tools.ps_controller.im920.driver import (  # noqa: PLC0415
         IM920HatDriver,
