@@ -202,25 +202,52 @@ void transitionTo(StepAssistPhase nextPhase)
 /**
  * @brief LaserSensor Facadeから遷移判断用の現在値を取得する。
  *
+ * 現phaseの遷移判定で使用するSensorだけを参照し、不要なSensor stateには
+ * アクセスしない。距離を取得しないSensorはfresh=false、distance=-1のまま返す。
+ *
  * @param now phase経過時間の計算に使用するmillis()時刻。
  * @return fresh状態、距離、phase経過時間をまとめた入力値。
  */
 StepAssistInput readStepAssistInput(uint32_t now)
 {
   StepAssistInput input = {};
-  input.frontFresh = laserSensorCtrlFresh(LASER_SENSOR_FRONT);
-  input.centerFresh = laserSensorCtrlFresh(LASER_SENSOR_CENTER);
-  input.rearFresh = laserSensorCtrlFresh(LASER_SENSOR_REAR);
-  input.frontDistanceMm = input.frontFresh
-    ? laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT)
-    : -1;
-  input.centerDistanceMm = input.centerFresh
-    ? laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER)
-    : -1;
-  input.rearDistanceMm = input.rearFresh
-    ? laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR)
-    : -1;
+  input.frontDistanceMm = -1;
+  input.centerDistanceMm = -1;
+  input.rearDistanceMm = -1;
   input.phaseElapsedMs = now - phaseEnteredMs;
+
+  switch (currentPhase)
+  {
+  case StepAssistPhase::NORMAL:
+  case StepAssistPhase::REAR_RAISED:
+    input.frontFresh = laserSensorCtrlFresh(LASER_SENSOR_FRONT);
+    if (input.frontFresh)
+    {
+      input.frontDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_FRONT);
+    }
+    break;
+
+  case StepAssistPhase::FRONT_LOWERED:
+    input.centerFresh = laserSensorCtrlFresh(LASER_SENSOR_CENTER);
+    if (input.centerFresh)
+    {
+      input.centerDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_CENTER);
+    }
+    break;
+
+  case StepAssistPhase::BOTH_LOWERED:
+  case StepAssistPhase::REAR_SENSOR_LOWER:
+    input.rearFresh = laserSensorCtrlFresh(LASER_SENSOR_REAR);
+    if (input.rearFresh)
+    {
+      input.rearDistanceMm =
+        laserSensorCtrlGetDistanceMm(LASER_SENSOR_REAR);
+    }
+    break;
+  }
+
   return input;
 }
 
