@@ -59,7 +59,7 @@ bool i2cBusRestart();
 void i2cBusApplySettings();
 
 /**
- * @brief lock保持中のBusへ1byteを書き込む。
+ * @brief lock保持中(接続中)のBusへ1byte(SYN)を書き込む。
  *
  * 呼び出し側がI2cBusConnectionを保持している必要がある。
  *
