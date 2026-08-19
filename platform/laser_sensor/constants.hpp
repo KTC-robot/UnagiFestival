@@ -20,15 +20,15 @@ constexpr int LASER_SENSOR_CENTER = 1;
 constexpr int LASER_SENSOR_REAR = 2;
 
 constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
-    true,  // FRONT  CH1
-    true,  // CENTER CH2
-    true   // REAR   CH0
+    true,  // FRONT  CH0
+    true,  // CENTER CH1
+    true   // REAR   CH2
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {
-    1,  // FRONT
-    2,  // CENTER
-    0   // REAR
+    0,  // FRONT
+    1,  // CENTER
+    2   // REAR
 };
 
 constexpr int LASER_SENSOR_OFFSETS_MM[LASER_SENSOR_COUNT] = {
