@@ -26,9 +26,9 @@ constexpr bool LASER_SENSOR_ENABLED[LASER_SENSOR_COUNT] = {
 };
 
 constexpr uint8_t LASER_SENSOR_CHANNELS[LASER_SENSOR_COUNT] = {
-    1,  // FRONT
-    2,  // CENTER
-    0   // REAR
+    0,  // FRONT
+    1,  // CENTER
+    2   // REAR
 };
 
 constexpr int LASER_SENSOR_OFFSETS_MM[LASER_SENSOR_COUNT] = {
