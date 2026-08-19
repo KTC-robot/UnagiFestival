@@ -8,10 +8,8 @@ from unagifestival.tools.ps_controller.im920.constants import (
     INVALID_DIRECTION_MESSAGE,
     INVALID_GAIN_MESSAGE,
     INVALID_RESULT_ACK_MESSAGE,
-    INVALID_SERVO_ANGLE_MESSAGE,
     INVALID_TUNING_DURATION_MESSAGE,
     INVALID_WHEEL_MESSAGE,
-    SERVO_ANGLE_MAX,
     UINT16_MAX_VALUE,
     WHEEL_GAIN_MAX,
     WHEEL_GAIN_MIN,
@@ -34,10 +32,6 @@ from unagifestival.tools.ps_controller.im920.model import (
     SetWheelGainCommand,
     StepAssistResetCommand,
     StopCommand,
-)
-from unagifestival.tools.ps_controller.servo.model import (
-    ServoSetAllCommand,
-    ServoSetCommand,
 )
 
 
@@ -129,15 +123,4 @@ def encode_command(  # noqa: C901, PLR0911, PLR0912
         )
     if isinstance(command, StepAssistResetCommand):
         return _control(ControlCommand.STEP_ASSIST_RESET)
-    if isinstance(command, ServoSetCommand):
-        payload = _byte_to_hex(PacketType.SERVO_SET)
-        payload += _byte_to_hex(command.channel)
-        payload += _byte_to_hex(command.angle)
-        return EncodedPacket(payload, "SERVO_SET")
-    if isinstance(command, ServoSetAllCommand):
-        if not 0 <= command.angle <= SERVO_ANGLE_MAX:
-            raise ValueError(INVALID_SERVO_ANGLE_MESSAGE)
-        payload = _byte_to_hex(PacketType.SERVO_SET_ALL)
-        payload += _byte_to_hex(command.angle)
-        return EncodedPacket(payload, "SERVO_SET_ALL")
     raise TypeError(type(command).__name__)

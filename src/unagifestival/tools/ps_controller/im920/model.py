@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from unagifestival.tools.ps_controller.servo.model import ServoCommand
-
 
 @dataclass(frozen=True)
 class StopCommand:
@@ -133,7 +131,6 @@ type IM920Command = (
     | GainTuneKeepaliveCommand
     | GainTuneResultAckCommand
     | StepAssistResetCommand
-    | ServoCommand
 )
 
 

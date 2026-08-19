@@ -1,5 +1,4 @@
 import logging
-import time
 
 from unagifestival.tools.ps_controller.enum import (
     AxisCode,
@@ -29,7 +28,6 @@ from unagifestival.tools.ps_controller.model import (
     ButtonEvent,
     ControllerState,
 )
-from unagifestival.tools.ps_controller.servo.mapper import ServoMapper
 
 logger = logging.getLogger("unagi_log")
 
@@ -39,22 +37,19 @@ class Handler:
     Properties:
         im920: IM920との送受信を行うClient。
         commands: ロボット制御Commandを生成するFactory。
-        servo_mapper: Controller入力をServo操作へ変換するMapper。
 
     About:
-        Controller入力から走行、停止、Servo操作のCommandを生成して送信する。
+        Controller入力から走行、停止、StepAssist操作のCommandを生成して送信する。
         周期処理とIM920 responseの受信も管理する。
     """
 
     def __init__(
         self,
         im920: IM920ClientProtocol | None = None,
-        servo_mapper: ServoMapper | None = None,
     ) -> None:
         """
         Args:
             im920: 注入するIM920 Client。未指定時はenterで実機Clientを生成する。
-            servo_mapper: 注入するServoMapper。未指定時は標準設定で生成する。
 
         Returns:
             なし。
@@ -65,7 +60,6 @@ class Handler:
         validate_handler_config()
         self.im920 = im920
         self.commands = CommandFactory()
-        self.servo_mapper = servo_mapper or ServoMapper()
 
     def enter(self) -> None:
         """
@@ -76,18 +70,12 @@ class Handler:
             なし。
 
         About:
-            必要に応じて実機Clientを生成し、設定されたServo home指令を送る。
+            必要に応じて実機Clientを生成し、Controller通信を開始する。
         """
         if self.im920 is None:
             self.im920 = create_im920_client(logger=logger)
 
-        im920 = self._get_im920()
         logger.info("[ROBOT] PS ControllerからIM920-HATへの送信処理を開始します")
-        commands = self.servo_mapper.startup_commands()
-        for index, command in enumerate(commands):
-            im920.send(command)
-            if index < len(commands) - 1:
-                time.sleep(self.servo_mapper.startup_interval_seconds)
 
     def exit(self) -> None:
         """
@@ -213,19 +201,9 @@ class Handler:
             なし。
 
         About:
-            軸状態を更新し、DPAD上下入力を全Servo操作へ変換して送信する。
+            後続の周期走行Command生成で使用する軸状態を更新する。
         """
         state.axis_values[event.code] = event.value
-        if event.code is not AxisCode.DPAD_Y:
-            return
-        if event.value == -1:
-            command = self.servo_mapper.open_all()
-            logger.info("[SERVO] 全channelへ送信します: CH0-6 ANGLE=%d", command.angle)
-            self._get_im920().send(command)
-        elif event.value == 1:
-            command = self.servo_mapper.close_all()
-            logger.info("[SERVO] 全channelへ送信します: CH0-6 ANGLE=%d", command.angle)
-            self._get_im920().send(command)
 
     def handle_button(self, event: ButtonEvent) -> None:
         """
@@ -236,7 +214,7 @@ class Handler:
             なし。
 
         About:
-            ボタン入力を車体操作またはServo Commandへ変換して送信する。
+            ボタン入力を停止、出力変更、StepAssist resetへ変換して送信する。
         """
         logger.info(
             "[ROBOT] ボタン入力: button=%s state=%s",
@@ -257,14 +235,6 @@ class Handler:
                 command = self.commands.reset_step_assist()
             if command is not None:
                 self._get_im920().send(command)
-
-        for servo_command in self.servo_mapper.map_button(event):
-            logger.info(
-                "[SERVO] 個別channelへ送信します: CH=%d ANGLE=%d",
-                servo_command.channel,
-                servo_command.angle,
-            )
-            self._get_im920().send(servo_command)
 
     def tick(
         self,

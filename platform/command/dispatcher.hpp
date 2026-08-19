@@ -38,7 +38,7 @@ struct CommandDispatchResult {
 };
 
 /**
- * @brief decode済みCommandをChassis・Servo・StepAssistへ渡す。
+ * @brief decode済みCommandをChassis・StepAssistへ渡す。
  *
  * @param command 実行する意味的なCommand。
  * @return IM920側で必要な返信・通信state更新情報。

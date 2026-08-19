@@ -33,13 +33,9 @@ class PacketType(IntEnum):
     """
     Properties:
         CONTROL: 車体制御Commandを格納するpacket種別。
-        SERVO_SET: 1つのServo角度を設定するpacket種別。
-        SERVO_SET_ALL: 全Servo角度を一括設定するpacket種別。
 
     About:
         Raspberry PiからESP32へ送信するwire packetの先頭識別値を定義する。
     """
 
     CONTROL = 0x43
-    SERVO_SET = 0x53
-    SERVO_SET_ALL = 0x54

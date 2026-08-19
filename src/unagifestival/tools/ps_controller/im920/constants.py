@@ -23,7 +23,6 @@ GAIN_DIRECTION_MAX: Final[int] = 3
 WHEEL_GAIN_MIN: Final[float] = 0.50
 WHEEL_GAIN_MAX: Final[float] = 1.50
 UINT16_MAX_VALUE: Final[int] = 0xFFFF
-SERVO_ANGLE_MAX: Final[int] = 180
 
 INVALID_WHEEL_MESSAGE: Final[str] = "wheel must be between 0 and 3"
 INVALID_DIRECTION_MESSAGE: Final[str] = "direction must be between 0 and 3"
@@ -32,4 +31,3 @@ INVALID_TUNING_DURATION_MESSAGE: Final[str] = (
     "duration_ms must be 100..10000 in 100 ms units"
 )
 INVALID_RESULT_ACK_MESSAGE: Final[str] = "result_index must be between 0 and 4"
-INVALID_SERVO_ANGLE_MESSAGE: Final[str] = "angle must be between 0 and 180"

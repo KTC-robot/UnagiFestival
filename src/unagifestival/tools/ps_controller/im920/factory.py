@@ -9,10 +9,6 @@ from unagifestival.tools.ps_controller.im920.model import (
     StepAssistResetCommand,
     StopCommand,
 )
-from unagifestival.tools.ps_controller.servo.model import (
-    ServoSetAllCommand,
-    ServoSetCommand,
-)
 
 
 class CommandFactory:
@@ -84,31 +80,6 @@ class CommandFactory:
             段差制御状態の初期化指令を生成する。
         """
         return StepAssistResetCommand()
-
-    @staticmethod
-    def servo_set(channel: int, angle: int) -> ServoSetCommand:
-        """
-        Args:
-            channel: 操作対象の論理Servo channel。
-            angle: 設定する角度。
-        Returns:
-            個別Servo設定Command。
-        About:
-            1つの論理Servoに対する角度指令を生成する。
-        """
-        return ServoSetCommand(channel, angle)
-
-    @staticmethod
-    def servo_set_all(angle: int) -> ServoSetAllCommand:
-        """
-        Args:
-            angle: 全論理Servoへ設定する角度。
-        Returns:
-            全Servo設定Command。
-        About:
-            全論理Servoに対する一括角度指令を生成する。
-        """
-        return ServoSetAllCommand(angle)
 
     @staticmethod
     def set_wheel_gain(

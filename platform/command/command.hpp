@@ -18,8 +18,6 @@ enum class CommandType : uint8_t {
   GAIN_TUNE_KEEPALIVE,     ///< 計測中の通信継続を通知する。
   GAIN_TUNE_RESULT_ACK,    ///< Piが計測結果を受信したことを通知する。
   STEP_ASSIST_RESET,       ///< 段差制御を通常状態へ戻す。
-  SERVO_SET,               ///< 1個のServo角度を設定する。
-  SERVO_SET_ALL,           ///< 全Servoを同じ角度へ設定する。
 };
 
 /** @brief 車体の前後・左右・旋回指令を保持する。 */
@@ -44,12 +42,6 @@ struct GainTuneStartCommand {
   uint32_t durationMs = 0;    ///< 計測時間（ms）。
 };
 
-/** @brief 論理サーボ番号と指定角度を保持する。 */
-struct ServoSetCommand {
-  uint8_t channel = 0;  ///< 論理サーボ番号。
-  uint8_t angle = 0;    ///< 指定角度。
-};
-
 /**
  * @brief wire payloadから復号したCommandとparameterを保持する。
  *
@@ -62,6 +54,4 @@ struct Command {
   SetWheelGainCommand wheelGain;         ///< 車輪補正gainの設定値。
   GainTuneStartCommand gainTuneStart;    ///< RPM計測試験の条件。
   uint8_t gainTuneResultIndex = 0;       ///< ACK対象。0〜3=WG、4=WD。
-  ServoSetCommand servo;                 ///< 個別Servoの指定値。
-  uint8_t servoAllAngle = 0;             ///< 全Servoへ指定する共通角度[度]。
 };

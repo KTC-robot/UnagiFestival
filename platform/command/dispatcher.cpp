@@ -1,7 +1,6 @@
 #include "command/dispatcher.hpp"
 
 #include "chassis_ctrl/chassis_ctrl.hpp"
-#include "servo_ctrl/servo_ctrl.hpp"
 #include "step_assist/step_assist_ctrl.hpp"
 
 CommandDispatchResult dispatchCommand(const Command& command) {
@@ -70,14 +69,6 @@ CommandDispatchResult dispatchCommand(const Command& command) {
       stepAssistCtrlReset();
       result.executed = true;
       result.reply = CommandReply::STEP_RESET;
-      break;
-    case CommandType::SERVO_SET:
-      result.executed = servoCtrlSetAngle(
-        command.servo.channel, command.servo.angle
-      );
-      break;
-    case CommandType::SERVO_SET_ALL:
-      result.executed = servoCtrlSetAllAngles(command.servoAllAngle);
       break;
   }
 

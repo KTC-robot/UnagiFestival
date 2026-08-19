@@ -11,7 +11,6 @@
 #include "im920/im920.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "device/relay_driver.hpp"
-#include "servo_ctrl/servo_ctrl.hpp"
 #include "step_assist/step_assist_ctrl.hpp"
 
 void setup() {
@@ -34,7 +33,6 @@ void setup() {
     Serial.println("[I2C] 警告: LaserSensor用Busの初期化に失敗しました");
   }
 
-  servoCtrlBegin();
   chassisCtrlBegin();
   im920Begin();
   chassisCtrlStop();

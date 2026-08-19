@@ -11,9 +11,7 @@ namespace CommandProtocol {
 
 /** @brief wire packetの種別。 */
 enum class PacketType : uint8_t {
-  CONTROL = 0x43,        ///< 車体制御Commandを格納するpacket。
-  SERVO_SET = 0x53,      ///< 1個のServo角度を指定するpacket。
-  SERVO_SET_ALL = 0x54,  ///< 全Servoの共通角度を指定するpacket。
+  CONTROL = 0x43,  ///< 車体制御Commandを格納するpacket。
 };
 
 /** @brief CONTROL packet内のCommand ID。 */

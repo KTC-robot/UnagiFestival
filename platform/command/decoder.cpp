@@ -139,22 +139,6 @@ bool decodeCommand(std::string_view payloadHex, Command& command) {
   switch (static_cast<PacketType>(packetType)) {
     case PacketType::CONTROL:
       return decodeControl(payloadHex, command);
-    case PacketType::SERVO_SET: {
-      uint8_t channel = 0;
-      uint8_t angle = 0;
-      if (!byteAt(payloadHex, 2, channel) || !byteAt(payloadHex, 4, angle) ||
-          angle > 180) return false;
-      command.type = CommandType::SERVO_SET;
-      command.servo = {channel, angle};
-      return true;
-    }
-    case PacketType::SERVO_SET_ALL: {
-      uint8_t angle = 0;
-      if (!byteAt(payloadHex, 2, angle) || angle > 180) return false;
-      command.type = CommandType::SERVO_SET_ALL;
-      command.servoAllAngle = angle;
-      return true;
-    }
     default:
       return false;
   }
