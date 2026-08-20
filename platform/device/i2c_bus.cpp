@@ -59,16 +59,16 @@ bool beginWireUnlocked(bool restart) {
 
 }  // namespace
 
-I2cBusLockGuard::I2cBusLockGuard()
+I2cBusConnection::I2cBusConnection()
     : locked_(i2cBusLock()) {}
 
-I2cBusLockGuard::~I2cBusLockGuard() {
+I2cBusConnection::~I2cBusConnection() {
   if (locked_) {
     i2cBusUnlock();
   }
 }
 
-bool I2cBusLockGuard::locked() const {
+bool I2cBusConnection::locked() const {
   return locked_;
 }
 
@@ -84,8 +84,8 @@ void i2cBusUnlock() {
 }
 
 void i2cBusApplySettings() {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     return;
   }
 
@@ -93,8 +93,8 @@ void i2cBusApplySettings() {
 }
 
 bool i2cBusBegin() {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     return false;
   }
 
@@ -102,8 +102,8 @@ bool i2cBusBegin() {
 }
 
 bool i2cBusRestart() {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     return false;
   }
 
@@ -118,8 +118,8 @@ bool i2cBusWriteByteLocked(uint8_t address, uint8_t value) {
 }
 
 bool i2cBusProbeDevice(uint8_t address) {
-  I2cBusLockGuard lock;
-  if (!lock.locked()) {
+  I2cBusConnection connection;
+  if (!connection.locked()) {
     return false;
   }
 
