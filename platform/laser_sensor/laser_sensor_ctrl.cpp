@@ -19,8 +19,8 @@ int nextSensorToRead = 0;
 
 bool disableAllTcaChannels() {
   // recovery後に以前のchannel選択を残さず、既知の状態から再初期化する。
-  I2cBusLockGuard lock;
-  return lock.locked() && i2cBusWriteByteLocked(
+  I2cBusConnection connection;
+  return connection.locked() && i2cBusWriteByteLocked(
     LASER_SENSOR_TCA9548A_ADDRESS,
     0x00
   );
