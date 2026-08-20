@@ -13,9 +13,15 @@ from unagifestival.tools.ps_controller.im920.enum import Md20aState
 from unagifestival.tools.ps_controller.im920.model import (
     AirFireStartCommand,
     AirFireStopCommand,
+    EmergencyStopCommand,
     IM920Command,
     IM920Response,
     Md20aSetStateCommand,
+    StepAssistManualFrontToggleCommand,
+    StepAssistManualRearToggleCommand,
+    StepAssistModeToggleCommand,
+    StepAssistResetCommand,
+    StopCommand,
 )
 from unagifestival.tools.ps_controller.model import (
     AxisInfo,
@@ -46,6 +52,7 @@ def controller_state() -> ControllerState:
         AxisCode.RIGHT_STICK_X: AxisInfo(0, -32768, 32767),
         AxisCode.LEFT_TRIGGER_L2: AxisInfo(0, 0, 255),
         AxisCode.RIGHT_TRIGGER_R2: AxisInfo(0, 0, 255),
+        AxisCode.DPAD_Y: AxisInfo(0, -1, 1),
     }
     return ControllerState(dict.fromkeys(info, 0), info)
 
@@ -111,6 +118,48 @@ class ControllerHotfixTest(unittest.TestCase):
         self.assertEqual(
             encode_command(Md20aSetStateCommand(Md20aState.REVERSE)).payload,
             "430C02",
+        )
+
+    def test_ps_pressed_sends_mode_toggle_once(self) -> None:
+        self.handler.handle_button(ButtonEvent(ButtonCode.PS_BTN, ButtonState.PRESSED))
+        self.assertEqual(len(self.im920.sent), 1)
+        self.assertIsInstance(self.im920.sent[0], StepAssistModeToggleCommand)
+        self.assertNotIsInstance(self.im920.sent[0], EmergencyStopCommand)
+
+    def test_ps_release_sends_nothing(self) -> None:
+        self.handler.handle_button(ButtonEvent(ButtonCode.PS_BTN, ButtonState.RELEASED))
+        self.assertEqual(self.im920.sent, [])
+
+    def test_cross_stop_and_circle_reset_remain_mapped(self) -> None:
+        self.handler.handle_button(ButtonEvent(ButtonCode.CROSS_BTN, ButtonState.PRESSED))
+        self.handler.handle_button(ButtonEvent(ButtonCode.CIRCLE_BTN, ButtonState.PRESSED))
+        self.assertIsInstance(self.im920.sent[0], StopCommand)
+        self.assertIsInstance(self.im920.sent[1], StepAssistResetCommand)
+
+    def test_dpad_y_sends_each_press_once_and_ignores_release(self) -> None:
+        state = controller_state()
+        self.handler.handle_axis(AxisInputEvent(AxisCode.DPAD_Y, -1), state)
+        self.assertEqual(len(self.im920.sent), 1)
+        self.assertIsInstance(self.im920.sent[-1], StepAssistManualFrontToggleCommand)
+
+        self.handler.handle_axis(AxisInputEvent(AxisCode.DPAD_Y, -1), state)
+        self.assertEqual(len(self.im920.sent), 1)
+        self.handler.handle_axis(AxisInputEvent(AxisCode.DPAD_Y, 0), state)
+        self.assertEqual(len(self.im920.sent), 1)
+
+        self.handler.handle_axis(AxisInputEvent(AxisCode.DPAD_Y, 1), state)
+        self.assertEqual(len(self.im920.sent), 2)
+        self.assertIsInstance(self.im920.sent[-1], StepAssistManualRearToggleCommand)
+
+    def test_step_assist_toggle_wire_ids(self) -> None:
+        self.assertEqual(encode_command(StepAssistModeToggleCommand()).payload, "430D")
+        self.assertEqual(
+            encode_command(StepAssistManualFrontToggleCommand()).payload,
+            "430E",
+        )
+        self.assertEqual(
+            encode_command(StepAssistManualRearToggleCommand()).payload,
+            "430F",
         )
 
 
