@@ -8,6 +8,7 @@
 #include "device/c620_driver.hpp"
 #include "chassis_ctrl/chassis_ctrl.hpp"
 #include "device/i2c_bus.hpp"
+#include "device/md20a_driver.hpp"
 #include "im920/im920.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "device/relay_driver.hpp"
@@ -23,6 +24,7 @@ void setup() {
   // 安全側出力を最初に確定し、device driver、制御、通信、sensor task、
   // StepAssistの順に初期化する。起動途中でもmotorは停止状態を維持する。
   relayDriverBegin();
+  md20aDriverBegin();
 
   if (!c620DriverBegin()) {
     Serial.println(
