@@ -11,13 +11,15 @@
 enum class CommandType : uint8_t {
   STOP,                    ///< 通常停止を要求する。
   EMERGENCY_STOP,          ///< 緊急停止を要求する。
-  CHANGE_POWER,            ///< 走行出力率の増減を要求する。
   DRIVE,                   ///< 前後・左右・旋回の走行を要求する。
   SET_WHEEL_GAIN,          ///< 方向別の車輪補正gain設定を要求する。
   GAIN_TUNE_START,         ///< 車輪RPM計測試験の開始を要求する。
   GAIN_TUNE_KEEPALIVE,     ///< 計測中の通信継続を通知する。
   GAIN_TUNE_RESULT_ACK,    ///< Piが計測結果を受信したことを通知する。
   STEP_ASSIST_RESET,       ///< 段差制御を通常状態へ戻す。
+  AIR_FIRE_START,          ///< Air Cylinder連射を開始する。
+  AIR_FIRE_STOP,           ///< Air Cylinder連射を停止する。
+  MD20A_SET_STATE,         ///< MD20Aの状態を設定する。
 };
 
 /** @brief 車体の前後・左右・旋回指令を保持する。 */
@@ -49,9 +51,9 @@ struct GainTuneStartCommand {
  */
 struct Command {
   CommandType type = CommandType::STOP;  ///< 実行するCommandの種類。
-  int8_t powerDelta = 0;                 ///< 走行出力率へ加算する差分[%]。
   DriveCommand drive;                    ///< DRIVE用の車体指令。
   SetWheelGainCommand wheelGain;         ///< 車輪補正gainの設定値。
   GainTuneStartCommand gainTuneStart;    ///< RPM計測試験の条件。
   uint8_t gainTuneResultIndex = 0;       ///< ACK対象。0〜3=WG、4=WD。
+  uint8_t md20aState = 0;                ///< MD20A状態。0=停止、1=正転、2=逆転。
 };

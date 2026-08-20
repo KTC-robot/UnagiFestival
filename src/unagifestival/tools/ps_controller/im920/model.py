@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from unagifestival.tools.ps_controller.im920.enum import Md20aState
+
 
 @dataclass(frozen=True)
 class StopCommand:
@@ -25,16 +27,20 @@ class EmergencyStopCommand:
 
 
 @dataclass(frozen=True)
-class ChangePowerCommand:
-    """
-    Properties:
-        delta: 走行出力率へ加える相対値。
+class AirFireStartCommand:
+    """Air Cylinder連射開始を要求する意味Command。"""
 
-    About:
-        現在の走行出力率を相対変更する意味Commandを保持する。
-    """
 
-    delta: int
+@dataclass(frozen=True)
+class AirFireStopCommand:
+    """Air Cylinder連射停止を要求する意味Command。"""
+
+
+@dataclass(frozen=True)
+class Md20aSetStateCommand:
+    """MD20Aの最終desired stateを設定する意味Command。"""
+
+    state: Md20aState
 
 
 @dataclass(frozen=True)
@@ -124,7 +130,9 @@ class StepAssistResetCommand:
 type IM920Command = (
     StopCommand
     | EmergencyStopCommand
-    | ChangePowerCommand
+    | AirFireStartCommand
+    | AirFireStopCommand
+    | Md20aSetStateCommand
     | DriveCommand
     | SetWheelGainCommand
     | GainTuneStartCommand

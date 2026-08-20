@@ -1,10 +1,13 @@
+from unagifestival.tools.ps_controller.im920.enum import Md20aState
 from unagifestival.tools.ps_controller.im920.model import (
-    ChangePowerCommand,
+    AirFireStartCommand,
+    AirFireStopCommand,
     DriveCommand,
     EmergencyStopCommand,
     GainTuneKeepaliveCommand,
     GainTuneResultAckCommand,
     GainTuneStartCommand,
+    Md20aSetStateCommand,
     SetWheelGainCommand,
     StepAssistResetCommand,
     StopCommand,
@@ -58,16 +61,16 @@ class CommandFactory:
         return EmergencyStopCommand()
 
     @staticmethod
-    def change_power(delta: int) -> ChangePowerCommand:
-        """
-        Args:
-            delta: 走行出力率へ加える相対値。
-        Returns:
-            走行出力率変更Command。
-        About:
-            現在値に対する走行出力率の変更指令を生成する。
-        """
-        return ChangePowerCommand(delta)
+    def air_fire_start() -> AirFireStartCommand:
+        return AirFireStartCommand()
+
+    @staticmethod
+    def air_fire_stop() -> AirFireStopCommand:
+        return AirFireStopCommand()
+
+    @staticmethod
+    def md20a_set_state(state: Md20aState) -> Md20aSetStateCommand:
+        return Md20aSetStateCommand(state)
 
     @staticmethod
     def reset_step_assist() -> StepAssistResetCommand:

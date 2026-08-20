@@ -87,15 +87,6 @@ void chassisCtrlSetForwardBlocked(bool blocked);
 void chassisCtrlStop();
 
 /**
- * @brief 走行出力率を指定量だけ増減する。
- *
- * 変更後の値は設定された最小値から最大値の範囲へ制限される。
- *
- * @param delta 現在値へ加算する出力率の差分[%]。
- */
-void chassisCtrlChangePower(int delta);
-
-/**
  * @brief 指定方向・車輪の目標RPM補正ゲインを設定する。
  *
  * @param direction 補正対象の走行方向。
@@ -147,7 +138,7 @@ ChassisGainTuningResult chassisCtrlGetGainTuningResult(int wheelIndex);
 void chassisCtrlClearGainTuningResultReady();
 
 /**
- * @brief 現在の走行出力率を取得する。
+ * @brief 固定走行出力率を取得する。
  *
  * @return 設定中の走行出力率[%]。
  */

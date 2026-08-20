@@ -1,4 +1,5 @@
 import logging
+import time
 
 from unagifestival.tools.ps_controller.enum import (
     AxisCode,
@@ -6,12 +7,12 @@ from unagifestival.tools.ps_controller.enum import (
     ButtonState,
 )
 from unagifestival.tools.ps_controller.handler.constants import (
+    AIR_TRIGGER_ACTIVE_RATIO,
     DRIVE_HZ,
-    DRIVE_POWER_STEP,
-    SLOW_MODE_MULTIPLIER,
+    STATE_COMMAND_RETRY_COUNT,
+    STATE_COMMAND_RETRY_INTERVAL_SECONDS,
     STICK_DEADZONE,
     STICK_SEND_MAX,
-    TRIGGER_ACTIVE_RATIO,
 )
 from unagifestival.tools.ps_controller.handler.validate import (
     validate_handler_config,
@@ -20,8 +21,9 @@ from unagifestival.tools.ps_controller.im920.client import (
     IM920ClientProtocol,
     create_im920_client,
 )
+from unagifestival.tools.ps_controller.im920.enum import Md20aState
 from unagifestival.tools.ps_controller.im920.factory import CommandFactory
-from unagifestival.tools.ps_controller.im920.model import DriveCommand
+from unagifestival.tools.ps_controller.im920.model import DriveCommand, IM920Command
 from unagifestival.tools.ps_controller.model import (
     AxisInfo,
     AxisInputEvent,
@@ -60,6 +62,8 @@ class Handler:
         validate_handler_config()
         self.im920 = im920
         self.commands = CommandFactory()
+        self._md20a_state = Md20aState.STOPPED
+        self._air_trigger_pressed = False
 
     def enter(self) -> None:
         """
@@ -146,14 +150,14 @@ class Handler:
             設定比率以上押されている場合はTrue、それ以外はFalse。
 
         About:
-            トリガー入力をslow modeの有効判定へ変換する。
+            R2入力をAir連射の有効判定へ変換する。
         """
         axis_info = state.axis_info.get(axis)
         if axis_info is None or axis_info.maximum <= axis_info.minimum:
             return False
         value = state.axis_values.get(axis, axis_info.minimum)
         pressed_ratio = (value - axis_info.minimum) / (axis_info.maximum - axis_info.minimum)
-        return pressed_ratio >= TRIGGER_ACTIVE_RATIO
+        return pressed_ratio >= AIR_TRIGGER_ACTIVE_RATIO
 
     def _make_drive_command(self, state: ControllerState) -> DriveCommand:
         """
@@ -161,10 +165,10 @@ class Handler:
             state: 最新のController状態。
 
         Returns:
-            stickとtriggerの状態から生成した走行Command。
+            stickの状態から生成した走行Command。
 
         About:
-            各軸を正規化し、必要に応じてslow mode係数を適用する。
+            各Stick軸を正規化して走行Commandを生成する。
         """
         lx = self._normalize_axis(
             state.axis_values.get(AxisCode.LEFT_STICK_X, 0),
@@ -181,15 +185,15 @@ class Handler:
         vx = -ly
         vy = lx
         wz = -rx
-        slow_mode = self._is_trigger_pressed(
-            state,
-            AxisCode.LEFT_TRIGGER_L2,
-        ) or self._is_trigger_pressed(state, AxisCode.RIGHT_TRIGGER_R2)
-        if slow_mode:
-            vx = int(vx * SLOW_MODE_MULTIPLIER)
-            vy = int(vy * SLOW_MODE_MULTIPLIER)
-            wz = int(wz * SLOW_MODE_MULTIPLIER)
         return self.commands.drive(vx, vy, wz)
+
+    def _send_state_command(self, command: IM920Command) -> None:
+        """状態変化Commandだけを短い間隔で3回送信する。"""
+        im920 = self._get_im920()
+        for attempt in range(STATE_COMMAND_RETRY_COUNT):
+            im920.send(command)
+            if attempt + 1 < STATE_COMMAND_RETRY_COUNT:
+                time.sleep(STATE_COMMAND_RETRY_INTERVAL_SECONDS)
 
     def handle_axis(self, event: AxisInputEvent, state: ControllerState) -> None:
         """
@@ -204,6 +208,18 @@ class Handler:
             後続の周期走行Command生成で使用する軸状態を更新する。
         """
         state.axis_values[event.code] = event.value
+        if event.code is not AxisCode.RIGHT_TRIGGER_R2:
+            return
+        pressed = self._is_trigger_pressed(state, AxisCode.RIGHT_TRIGGER_R2)
+        if pressed == self._air_trigger_pressed:
+            return
+        self._air_trigger_pressed = pressed
+        if pressed:
+            logger.info("[AIR] 連射を開始します")
+            self._send_state_command(self.commands.air_fire_start())
+        else:
+            logger.info("[AIR] 連射を停止します")
+            self._send_state_command(self.commands.air_fire_stop())
 
     def handle_button(self, event: ButtonEvent) -> None:
         """
@@ -214,7 +230,7 @@ class Handler:
             なし。
 
         About:
-            ボタン入力を停止、出力変更、StepAssist resetへ変換して送信する。
+            ボタン入力を停止、MD20A状態、StepAssist resetへ変換して送信する。
         """
         logger.info(
             "[ROBOT] ボタン入力: button=%s state=%s",
@@ -224,17 +240,28 @@ class Handler:
         if event.state is ButtonState.PRESSED:
             command = None
             if event.code is ButtonCode.CROSS_BTN:
+                self._md20a_state = Md20aState.STOPPED
                 command = self.commands.stop()
             elif event.code is ButtonCode.PS_BTN:
+                self._md20a_state = Md20aState.STOPPED
                 command = self.commands.emergency_stop()
             elif event.code is ButtonCode.L1_BTN:
-                command = self.commands.change_power(-DRIVE_POWER_STEP)
+                self._md20a_state = (
+                    Md20aState.STOPPED if self._md20a_state is Md20aState.REVERSE else Md20aState.REVERSE
+                )
+                command = self.commands.md20a_set_state(self._md20a_state)
             elif event.code is ButtonCode.R1_BTN:
-                command = self.commands.change_power(DRIVE_POWER_STEP)
+                self._md20a_state = (
+                    Md20aState.STOPPED if self._md20a_state is Md20aState.FORWARD else Md20aState.FORWARD
+                )
+                command = self.commands.md20a_set_state(self._md20a_state)
             elif event.code is ButtonCode.CIRCLE_BTN:
                 command = self.commands.reset_step_assist()
             if command is not None:
-                self._get_im920().send(command)
+                if event.code in (ButtonCode.L1_BTN, ButtonCode.R1_BTN):
+                    self._send_state_command(command)
+                else:
+                    self._get_im920().send(command)
 
     def tick(
         self,

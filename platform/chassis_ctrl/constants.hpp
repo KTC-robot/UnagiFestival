@@ -30,9 +30,7 @@ constexpr float GAIN_TUNING_RAMP_TOLERANCE_RPM = 50.0f;
 
 constexpr uint32_t MOTOR_CONTROL_INTERVAL_US = 5000;
 
-constexpr int DRIVE_POWER_MIN = 10;
-constexpr int DRIVE_POWER_MAX = 80;
-constexpr int DRIVE_POWER_STEP = 5;
+constexpr int DRIVE_POWER_PERCENT = 80;
 
 namespace CanConfig_chassis_ctrl {
 constexpr int NUM_MOTORS = 4;

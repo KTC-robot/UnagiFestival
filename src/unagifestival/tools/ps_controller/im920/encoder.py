@@ -21,7 +21,8 @@ from unagifestival.tools.ps_controller.im920.enum import (
     PacketType,
 )
 from unagifestival.tools.ps_controller.im920.model import (
-    ChangePowerCommand,
+    AirFireStartCommand,
+    AirFireStopCommand,
     DriveCommand,
     EmergencyStopCommand,
     EncodedPacket,
@@ -29,6 +30,7 @@ from unagifestival.tools.ps_controller.im920.model import (
     GainTuneResultAckCommand,
     GainTuneStartCommand,
     IM920Command,
+    Md20aSetStateCommand,
     SetWheelGainCommand,
     StepAssistResetCommand,
     StopCommand,
@@ -77,8 +79,12 @@ def encode_command(  # noqa: C901, PLR0911, PLR0912
         return _control(ControlCommand.STOP)
     if isinstance(command, EmergencyStopCommand):
         return _control(ControlCommand.EMERGENCY_STOP)
-    if isinstance(command, ChangePowerCommand):
-        return _control(ControlCommand.CHANGE_POWER, _byte_to_hex(command.delta))
+    if isinstance(command, AirFireStartCommand):
+        return _control(ControlCommand.AIR_FIRE_START)
+    if isinstance(command, AirFireStopCommand):
+        return _control(ControlCommand.AIR_FIRE_STOP)
+    if isinstance(command, Md20aSetStateCommand):
+        return _control(ControlCommand.MD20A_SET_STATE, _byte_to_hex(command.state))
     if isinstance(command, DriveCommand):
         parameters = _byte_to_hex(command.vx)
         parameters += _byte_to_hex(command.vy)

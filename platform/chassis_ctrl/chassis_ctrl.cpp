@@ -21,7 +21,6 @@ float commandToFloat(int value) {
   return static_cast<float>(value) / static_cast<float>(COMMAND_MAX);
 }
 
-int drivePowerPercent = 80;
 bool motorsActive = false;
 float longitudinalCommand = 0.0f;
 
@@ -192,7 +191,7 @@ void printMotorValues(float vx, float vy, float wz) {
   Serial.print(" wz=");
   Serial.print(wz, 2);
   Serial.print(" PWR=");
-  Serial.print(drivePowerPercent);
+  Serial.print(DRIVE_POWER_PERCENT);
   Serial.print("% | ");
 
   for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
@@ -284,7 +283,7 @@ void setChassisSpringLogic(float vx, float vy, float wz) {
   // 実際の目標RPMへ変換する。
   const float maxRpm =
     static_cast<float>(CHASSIS_MAX_RPM) *
-    (static_cast<float>(drivePowerPercent) / 100.0f) *
+    (static_cast<float>(DRIVE_POWER_PERCENT) / 100.0f) *
     selectedDriveScale;
 
   bool anyWheelActive = false;
@@ -531,18 +530,6 @@ void chassisCtrlStop() {
   c620DriverZeroAllImmediate();
 }
 
-void chassisCtrlChangePower(int delta) {
-  drivePowerPercent = constrain(
-    drivePowerPercent + delta,
-    DRIVE_POWER_MIN,
-    DRIVE_POWER_MAX
-  );
-
-  Serial.print("[CHASSIS] 走行出力率=");
-  Serial.print(drivePowerPercent);
-  Serial.println("%");
-}
-
 bool chassisCtrlSetWheelGain(
   ChassisGainDirection direction,
   int wheelIndex,
@@ -603,7 +590,7 @@ void chassisCtrlClearGainTuningResultReady() {
 }
 
 int chassisCtrlGetPowerPercent() {
-  return drivePowerPercent;
+  return DRIVE_POWER_PERCENT;
 }
 
 bool chassisCtrlIsActive() {

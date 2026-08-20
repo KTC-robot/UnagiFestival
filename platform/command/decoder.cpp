@@ -69,11 +69,6 @@ bool decodeControl(std::string_view payload, Command& command) {
     case ControlCommand::EMERGENCY_STOP:
       command.type = CommandType::EMERGENCY_STOP;
       return true;
-    case ControlCommand::CHANGE_POWER:
-      if (!byteAt(payload, 4, first)) return false;
-      command.type = CommandType::CHANGE_POWER;
-      command.powerDelta = toInt8(first);
-      return true;
     case ControlCommand::DRIVE:
       if (!byteAt(payload, 4, first) || !byteAt(payload, 6, second) ||
           !byteAt(payload, 8, third)) return false;
@@ -125,6 +120,17 @@ bool decodeControl(std::string_view payload, Command& command) {
       return true;
     case ControlCommand::STEP_ASSIST_RESET:
       command.type = CommandType::STEP_ASSIST_RESET;
+      return true;
+    case ControlCommand::AIR_FIRE_START:
+      command.type = CommandType::AIR_FIRE_START;
+      return true;
+    case ControlCommand::AIR_FIRE_STOP:
+      command.type = CommandType::AIR_FIRE_STOP;
+      return true;
+    case ControlCommand::MD20A_SET_STATE:
+      if (!byteAt(payload, 4, first) || first > 2) return false;
+      command.type = CommandType::MD20A_SET_STATE;
+      command.md20aState = first;
       return true;
     default:
       return false;
