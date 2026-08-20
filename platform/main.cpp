@@ -10,6 +10,7 @@
 #include "chassis_ctrl/chassis_ctrl.hpp"
 #include "device/i2c_bus.hpp"
 #include "device/md20a_driver.hpp"
+#include "device/ws2812_driver.hpp"
 #include "im920/im920.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "device/relay_driver.hpp"
@@ -45,6 +46,7 @@ void setup() {
     Serial.println("[LASER] 警告: 測距taskの起動に失敗しました");
   }
 
+  ws2812DriverBegin();
   stepAssistCtrlBegin();
 
   Serial.println();
