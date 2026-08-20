@@ -207,7 +207,16 @@ class Handler:
         About:
             後続の周期走行Command生成で使用する軸状態を更新する。
         """
+        previous_value = state.axis_values.get(event.code, 0)
         state.axis_values[event.code] = event.value
+        if event.code is AxisCode.DPAD_Y:
+            if event.value == previous_value:
+                return
+            if event.value == -1:
+                self._get_im920().send(self.commands.step_assist_toggle_manual_front())
+            elif event.value == 1:
+                self._get_im920().send(self.commands.step_assist_toggle_manual_rear())
+            return
         if event.code is not AxisCode.RIGHT_TRIGGER_R2:
             return
         pressed = self._is_trigger_pressed(state, AxisCode.RIGHT_TRIGGER_R2)
@@ -243,8 +252,7 @@ class Handler:
                 self._md20a_state = Md20aState.STOPPED
                 command = self.commands.stop()
             elif event.code is ButtonCode.PS_BTN:
-                self._md20a_state = Md20aState.STOPPED
-                command = self.commands.emergency_stop()
+                command = self.commands.step_assist_toggle_mode()
             elif event.code is ButtonCode.L1_BTN:
                 self._md20a_state = (
                     Md20aState.STOPPED if self._md20a_state is Md20aState.REVERSE else Md20aState.REVERSE

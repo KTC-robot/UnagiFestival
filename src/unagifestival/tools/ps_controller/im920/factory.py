@@ -9,6 +9,9 @@ from unagifestival.tools.ps_controller.im920.model import (
     GainTuneStartCommand,
     Md20aSetStateCommand,
     SetWheelGainCommand,
+    StepAssistManualFrontToggleCommand,
+    StepAssistManualRearToggleCommand,
+    StepAssistModeToggleCommand,
     StepAssistResetCommand,
     StopCommand,
 )
@@ -83,6 +86,18 @@ class CommandFactory:
             段差制御状態の初期化指令を生成する。
         """
         return StepAssistResetCommand()
+
+    @staticmethod
+    def step_assist_toggle_mode() -> StepAssistModeToggleCommand:
+        return StepAssistModeToggleCommand()
+
+    @staticmethod
+    def step_assist_toggle_manual_front() -> StepAssistManualFrontToggleCommand:
+        return StepAssistManualFrontToggleCommand()
+
+    @staticmethod
+    def step_assist_toggle_manual_rear() -> StepAssistManualRearToggleCommand:
+        return StepAssistManualRearToggleCommand()
 
     @staticmethod
     def set_wheel_gain(

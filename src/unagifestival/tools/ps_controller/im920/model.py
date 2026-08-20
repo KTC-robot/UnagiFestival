@@ -118,13 +118,22 @@ class GainTuneResultAckCommand:
 
 @dataclass(frozen=True)
 class StepAssistResetCommand:
-    """
-    Properties:
-        なし。
+    """ESP32の段差制御状態をresetする意味Command。"""
 
-    About:
-        ESP32の段差制御状態をresetする意味Commandを表す。
-    """
+
+@dataclass(frozen=True)
+class StepAssistModeToggleCommand:
+    """StepAssistのAUTO/MANUAL切替を要求する意味Command。"""
+
+
+@dataclass(frozen=True)
+class StepAssistManualFrontToggleCommand:
+    """MANUAL時の前補助輪切替を要求する意味Command。"""
+
+
+@dataclass(frozen=True)
+class StepAssistManualRearToggleCommand:
+    """MANUAL時の後補助輪切替を要求する意味Command。"""
 
 
 type IM920Command = (
@@ -139,6 +148,9 @@ type IM920Command = (
     | GainTuneKeepaliveCommand
     | GainTuneResultAckCommand
     | StepAssistResetCommand
+    | StepAssistModeToggleCommand
+    | StepAssistManualFrontToggleCommand
+    | StepAssistManualRearToggleCommand
 )
 
 

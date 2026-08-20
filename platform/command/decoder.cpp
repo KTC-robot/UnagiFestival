@@ -132,6 +132,15 @@ bool decodeControl(std::string_view payload, Command& command) {
       command.type = CommandType::MD20A_SET_STATE;
       command.md20aState = first;
       return true;
+    case ControlCommand::STEP_ASSIST_MODE_TOGGLE:
+      command.type = CommandType::STEP_ASSIST_MODE_TOGGLE;
+      return true;
+    case ControlCommand::STEP_ASSIST_MANUAL_FRONT_TOGGLE:
+      command.type = CommandType::STEP_ASSIST_MANUAL_FRONT_TOGGLE;
+      return true;
+    case ControlCommand::STEP_ASSIST_MANUAL_REAR_TOGGLE:
+      command.type = CommandType::STEP_ASSIST_MANUAL_REAR_TOGGLE;
+      return true;
     default:
       return false;
   }

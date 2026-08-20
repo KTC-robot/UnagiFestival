@@ -20,6 +20,9 @@ enum class CommandType : uint8_t {
   AIR_FIRE_START,          ///< Air Cylinder連射を開始する。
   AIR_FIRE_STOP,           ///< Air Cylinder連射を停止する。
   MD20A_SET_STATE,         ///< MD20Aの状態を設定する。
+  STEP_ASSIST_MODE_TOGGLE,  ///< StepAssistのAUTO/MANUALを切り替える。
+  STEP_ASSIST_MANUAL_FRONT_TOGGLE,  ///< MANUAL時に前補助輪を切り替える。
+  STEP_ASSIST_MANUAL_REAR_TOGGLE,   ///< MANUAL時に後補助輪を切り替える。
 };
 
 /** @brief 車体の前後・左右・旋回指令を保持する。 */

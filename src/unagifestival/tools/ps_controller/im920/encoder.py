@@ -32,6 +32,9 @@ from unagifestival.tools.ps_controller.im920.model import (
     IM920Command,
     Md20aSetStateCommand,
     SetWheelGainCommand,
+    StepAssistManualFrontToggleCommand,
+    StepAssistManualRearToggleCommand,
+    StepAssistModeToggleCommand,
     StepAssistResetCommand,
     StopCommand,
 )
@@ -129,4 +132,10 @@ def encode_command(  # noqa: C901, PLR0911, PLR0912
         )
     if isinstance(command, StepAssistResetCommand):
         return _control(ControlCommand.STEP_ASSIST_RESET)
+    if isinstance(command, StepAssistModeToggleCommand):
+        return _control(ControlCommand.STEP_ASSIST_MODE_TOGGLE)
+    if isinstance(command, StepAssistManualFrontToggleCommand):
+        return _control(ControlCommand.STEP_ASSIST_MANUAL_FRONT_TOGGLE)
+    if isinstance(command, StepAssistManualRearToggleCommand):
+        return _control(ControlCommand.STEP_ASSIST_MANUAL_REAR_TOGGLE)
     raise TypeError(type(command).__name__)

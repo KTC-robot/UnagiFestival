@@ -28,6 +28,9 @@ enum class ControlCommand : uint8_t {
   AIR_FIRE_START = 0x0A,          ///< Air Cylinder連射開始。
   AIR_FIRE_STOP = 0x0B,           ///< Air Cylinder連射停止。
   MD20A_SET_STATE = 0x0C,         ///< MD20Aのdesired state設定。
+  STEP_ASSIST_MODE_TOGGLE = 0x0D,  ///< StepAssistのAUTO/MANUAL切替。
+  STEP_ASSIST_MANUAL_FRONT_TOGGLE = 0x0E,  ///< MANUAL時の前補助輪切替。
+  STEP_ASSIST_MANUAL_REAR_TOGGLE = 0x0F,   ///< MANUAL時の後補助輪切替。
 };
 
 constexpr float GAIN_WIRE_SCALE = 1000.0f;
