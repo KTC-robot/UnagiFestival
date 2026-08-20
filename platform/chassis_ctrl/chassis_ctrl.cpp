@@ -45,6 +45,12 @@ struct GainTuningAccumulator {
   double absoluteRpmSquaredSum;  ///< 標準偏差計算用のRPM絶対値二乗和。
 };
 
+/** @brief Gain Tuning途中の統計表示に使用する読み取り専用snapshot。 */
+struct GainTuningStatisticsSnapshot {
+  double meanAbsoluteRpm;  ///< 現時点までの実測RPM絶対値平均。
+  double standardDeviationRpm;  ///< 現時点までの実測RPM絶対値の母標準偏差。
+};
+
 GainTuningAccumulator tuningStats[NUM_MOTORS] = {};
 ChassisGainTuningResult tuningResults[NUM_MOTORS] = {};
 bool tuningActive = false;
@@ -80,6 +86,130 @@ bool allTuningTargetsSettled() {
   return true;
 }
 
+GainTuningStatisticsSnapshot calculateTuningStatisticsSnapshot(
+  const GainTuningAccumulator& stats
+) {
+  if (stats.sampleCount == 0) {
+    return {};
+  }
+
+  const double mean =
+    stats.absoluteRpmSum / static_cast<double>(stats.sampleCount);
+  const double variance = max(
+    0.0,
+    stats.absoluteRpmSquaredSum / static_cast<double>(stats.sampleCount) -
+      mean * mean
+  );
+  return {mean, sqrt(variance)};
+}
+
+void printGainTuningMapping() {
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+    Serial.print("[GAIN][MAP] wheel=");
+    Serial.print(WHEEL_NAME[wheelIndex]);
+    Serial.print(" motor=M");
+    Serial.print(motorIndex + 1);
+    Serial.print(" ESC_ID=");
+    Serial.print(WHEEL_ESC_ID[wheelIndex]);
+    Serial.print(" reversed=");
+    Serial.println(MOTOR_REVERSED[motorIndex] ? "true" : "false");
+  }
+}
+
+void printGainTuningStart(
+  int8_t vx,
+  int8_t vy,
+  int8_t wz
+) {
+  Serial.println("[GAIN][START] Gain Tuningを開始します");
+  Serial.print("[GAIN][START] duration=");
+  Serial.print(tuningDurationMs);
+  Serial.print("ms command=(vx=");
+  Serial.print(vx);
+  Serial.print(", vy=");
+  Serial.print(vy);
+  Serial.print(", wz=");
+  Serial.print(wz);
+  Serial.print(") power=");
+  Serial.print(DRIVE_POWER_PERCENT);
+  Serial.println("%");
+
+  Serial.print("[GAIN][START] Kp=");
+  Serial.print(SPEED_KP, 3);
+  Serial.print(" Ki=");
+  Serial.print(SPEED_KI, 3);
+  Serial.print(" current_limit=");
+  Serial.print(MAX_CURRENT_COMMAND);
+  Serial.print(" integral_limit=");
+  Serial.println(PID_INTEGRAL_LIMIT, 0);
+
+  Serial.print("[GAIN][START] slew=");
+  Serial.print(TARGET_RPM_SLEW_PER_SEC, 0);
+  Serial.print("rpm/s ramp_tolerance=");
+  Serial.print(GAIN_TUNING_RAMP_TOLERANCE_RPM, 0);
+  Serial.print("rpm log_interval=");
+  Serial.print(GAIN_TUNING_LOG_INTERVAL_MS);
+  Serial.println("ms");
+  printGainTuningMapping();
+}
+
+void printGainTuningResults() {
+  double maximumMeanRpm = 0.0;
+  double minimumMeanRpm = 0.0;
+
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+    const ChassisGainTuningResult& result = tuningResults[wheelIndex];
+    const double variationPercent = result.meanAbsoluteRpm > 0.0f
+      ? static_cast<double>(result.standardDeviationRpm) /
+        static_cast<double>(result.meanAbsoluteRpm) * 100.0
+      : 0.0;
+
+    if (wheelIndex == 0) {
+      maximumMeanRpm = result.meanAbsoluteRpm;
+      minimumMeanRpm = result.meanAbsoluteRpm;
+    } else {
+      maximumMeanRpm = max(
+        maximumMeanRpm,
+        static_cast<double>(result.meanAbsoluteRpm)
+      );
+      minimumMeanRpm = min(
+        minimumMeanRpm,
+        static_cast<double>(result.meanAbsoluteRpm)
+      );
+    }
+
+    Serial.print("[GAIN][RESULT] wheel=");
+    Serial.print(WHEEL_NAME[wheelIndex]);
+    Serial.print(" motor=M");
+    Serial.print(motorIndex + 1);
+    Serial.print(" samples=");
+    Serial.print(result.sampleCount);
+    Serial.print(" mean=");
+    Serial.print(result.meanAbsoluteRpm, 0);
+    Serial.print("rpm stddev=");
+    Serial.print(result.standardDeviationRpm, 0);
+    Serial.print("rpm variation=");
+    Serial.print(variationPercent, 2);
+    Serial.println("%");
+  }
+
+  const double differenceRpm = maximumMeanRpm - minimumMeanRpm;
+  const double balancePercent = maximumMeanRpm > 0.0
+    ? minimumMeanRpm / maximumMeanRpm * 100.0
+    : 0.0;
+  Serial.print("[GAIN][SUMMARY] max_mean=");
+  Serial.print(maximumMeanRpm, 0);
+  Serial.print("rpm min_mean=");
+  Serial.print(minimumMeanRpm, 0);
+  Serial.print("rpm difference=");
+  Serial.print(differenceRpm, 0);
+  Serial.print("rpm balance=");
+  Serial.print(balancePercent, 1);
+  Serial.println("%");
+}
+
 /**
  * @brief Gain Tuningを終了し、4輪のRPM統計を確定する。
  *
@@ -109,8 +239,9 @@ void finishGainTuning() {
     }
   }
 
+  printGainTuningResults();
   tuningResultReady = true;
-  Serial.println("[CHASSIS] Gain Tuningが完了したため停止しました");
+  Serial.println("[GAIN][RESULT] Gain Tuningが完了したため停止しました");
 }
 
 float applyMotorInverse(int motorIndex, float value) {
@@ -155,6 +286,11 @@ float getWheelTargetRpm(int wheelIndex) {
   return applyMotorInverse(motorIndex, requestedMotorRpm[motorIndex]);
 }
 
+float getWheelRampedRpm(int wheelIndex) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+  return applyMotorInverse(motorIndex, rampedMotorRpm[motorIndex]);
+}
+
 float getWheelMeasuredRpm(int wheelIndex) {
   const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
 
@@ -173,6 +309,141 @@ int16_t getWheelCurrentCommand(int wheelIndex) {
       static_cast<float>(c620DriverGetCurrentCommand(motorIndex))
     )
   );
+}
+
+int16_t getWheelMeasuredCurrent(int wheelIndex) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+  return static_cast<int16_t>(
+    applyMotorInverse(
+      motorIndex,
+      static_cast<float>(c620DriverGetMeasuredCurrent(motorIndex))
+    )
+  );
+}
+
+void printGainTuningWheelRpm(
+  const char* stage,
+  uint32_t elapsedMs,
+  int wheelIndex
+) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+  const float requestedRpm = getWheelTargetRpm(wheelIndex);
+  const float rampedRpm = getWheelRampedRpm(wheelIndex);
+
+  Serial.print("[GAIN][");
+  Serial.print(stage);
+  Serial.print("] t=");
+  Serial.print(elapsedMs);
+  Serial.print("ms wheel=");
+  Serial.print(WHEEL_NAME[wheelIndex]);
+  Serial.print(" motor=M");
+  Serial.print(motorIndex + 1);
+  Serial.print(" requested=");
+  Serial.print(requestedRpm, 0);
+  Serial.print("rpm ramped=");
+  Serial.print(rampedRpm, 0);
+  Serial.print("rpm actual=");
+  Serial.print(getWheelMeasuredRpm(wheelIndex), 0);
+  Serial.print("rpm remaining=");
+  Serial.print(requestedRpm - rampedRpm, 0);
+  Serial.print("rpm fresh=");
+  Serial.println(c620DriverFeedbackFresh(motorIndex) ? "true" : "false");
+}
+
+void printGainTuningSamplingStarted(uint32_t elapsedMs) {
+  Serial.print(
+    "[GAIN][SAMPLE] 全wheelのRampが収束したため測定を開始します t="
+  );
+  Serial.print(elapsedMs);
+  Serial.println("ms");
+  for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+    printGainTuningWheelRpm("SAMPLE", elapsedMs, wheelIndex);
+  }
+}
+
+void printGainTuningSample(
+  uint32_t elapsedMs,
+  float dt,
+  int wheelIndex,
+  const SpeedControllerResult* speedResult
+) {
+  const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+  const bool fresh = c620DriverFeedbackFresh(motorIndex);
+  const GainTuningAccumulator& stats = tuningStats[wheelIndex];
+  const GainTuningStatisticsSnapshot snapshot =
+    calculateTuningStatisticsSnapshot(stats);
+
+  Serial.print("[GAIN][SAMPLE] t=");
+  Serial.print(elapsedMs);
+  Serial.print("ms dt=");
+  Serial.print(dt, 4);
+  Serial.print("s wheel=");
+  Serial.print(WHEEL_NAME[wheelIndex]);
+  Serial.print(" motor=M");
+  Serial.print(motorIndex + 1);
+  Serial.print(" ESC_ID=");
+  Serial.println(WHEEL_ESC_ID[wheelIndex]);
+
+  Serial.print("  requested=");
+  Serial.print(getWheelTargetRpm(wheelIndex), 0);
+  Serial.print("rpm ramped=");
+  Serial.print(getWheelRampedRpm(wheelIndex), 0);
+  Serial.print("rpm actual=");
+  Serial.print(getWheelMeasuredRpm(wheelIndex), 0);
+  Serial.print("rpm error=");
+  if (speedResult != nullptr) {
+    Serial.print(applyMotorInverse(motorIndex, speedResult->error), 0);
+  } else {
+    Serial.print("N/A");
+  }
+  Serial.println("rpm");
+
+  Serial.print("  Kp=");
+  Serial.print(SPEED_KP, 3);
+  Serial.print(" Ki=");
+  Serial.print(SPEED_KI, 3);
+  if (speedResult != nullptr) {
+    const float wheelError = applyMotorInverse(motorIndex, speedResult->error);
+    const float wheelIntegral =
+      applyMotorInverse(motorIndex, speedResult->integral);
+    Serial.print(" P=");
+    Serial.print(SPEED_KP * wheelError, 0);
+    Serial.print(" integral=");
+    Serial.print(wheelIntegral, 0);
+    Serial.print(" I=");
+    Serial.println(SPEED_KI * wheelIntegral, 0);
+  } else {
+    Serial.println(" P=N/A integral=N/A I=N/A");
+  }
+
+  Serial.print("  output_raw=");
+  if (speedResult != nullptr) {
+    Serial.print(applyMotorInverse(motorIndex, speedResult->output), 0);
+  } else {
+    Serial.print("N/A");
+  }
+  Serial.print(" current_cmd=");
+  Serial.print(getWheelCurrentCommand(wheelIndex));
+  Serial.print(" current_measured=");
+  Serial.print(getWheelMeasuredCurrent(wheelIndex));
+  Serial.print(" saturated=");
+  Serial.println(
+    speedResult != nullptr &&
+      fabsf(speedResult->output) >= static_cast<float>(MAX_CURRENT_COMMAND)
+      ? "true" : "false"
+  );
+
+  Serial.print("  fresh=");
+  Serial.print(fresh ? "true" : "false");
+  Serial.print(" temperature=");
+  Serial.print(c620DriverGetMotorTemperature(motorIndex));
+  Serial.print("C samples=");
+  Serial.print(stats.sampleCount);
+  Serial.print(" mean_abs=");
+  Serial.print(snapshot.meanAbsoluteRpm, 0);
+  Serial.print("rpm stddev=");
+  Serial.print(snapshot.standardDeviationRpm, 0);
+  Serial.println("rpm");
 }
 
 void printMotorValues(float vx, float vy, float wz) {
@@ -362,11 +633,14 @@ void chassisCtrlUpdate() {
   const bool printTuningLog =
     tuningActive && ENABLE_GAIN_TUNING_LOG &&
     nowMs - lastTuningLogMs >= GAIN_TUNING_LOG_INTERVAL_MS;
+  SpeedControllerResult tuningSpeedResults[NUM_MOTORS] = {};
+  bool tuningSpeedResultValid[NUM_MOTORS] = {};
 
   // 4輪すべてのtarget rampが収束した次の制御周期から同時に集計する。
   // wheelごとに開始時刻がずれると、RPM比較の測定区間が揃わないため。
   if (tuningActive && !tuningSamplingStarted && allTuningTargetsSettled()) {
     tuningSamplingStarted = true;
+    printGainTuningSamplingStarted(nowMs - tuningStartedMs);
   }
 
   for (int motorIndex = 0; motorIndex < NUM_MOTORS; ++motorIndex) {
@@ -397,6 +671,8 @@ void chassisCtrlUpdate() {
         static_cast<float>(c620DriverGetMotorRpm(motorIndex)),
         dt
       );
+    tuningSpeedResults[motorIndex] = speedResult;
+    tuningSpeedResultValid[motorIndex] = true;
 
     if (tuningActive && tuningSamplingStarted) {
       for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
@@ -414,31 +690,6 @@ void chassisCtrlUpdate() {
         break;
       }
 
-      if (printTuningLog) {
-        Serial.print("[CHASSIS] Gain Tuning motor=");
-        Serial.print(motorIndex + 1);
-        Serial.print(" KP=");
-        Serial.print(SPEED_KP, 3);
-        Serial.print(" KI=");
-        Serial.print(SPEED_KI, 3);
-        Serial.print(" 目標RPM=");
-        Serial.print(rampedMotorRpm[motorIndex], 0);
-        Serial.print(" 実測RPM=");
-        Serial.print(c620DriverGetMotorRpm(motorIndex));
-        Serial.print(" 誤差RPM=");
-        Serial.print(speedResult.error, 0);
-        Serial.print(" P=");
-        Serial.print(SPEED_KP * speedResult.error, 0);
-        Serial.print(" I=");
-        Serial.print(SPEED_KI * speedResult.integral, 0);
-        Serial.print(" PI出力=");
-        Serial.print(speedResult.output, 0);
-        Serial.print(" 飽和=");
-        Serial.println(
-          fabsf(speedResult.output) >=
-            static_cast<float>(MAX_CURRENT_COMMAND) ? 1 : 0
-        );
-      }
     }
 
     c620DriverSetCurrentCommand(
@@ -448,6 +699,22 @@ void chassisCtrlUpdate() {
   }
 
   if (printTuningLog) {
+    const uint32_t tuningElapsedMs = nowMs - tuningStartedMs;
+    for (int wheelIndex = 0; wheelIndex < NUM_WHEELS; ++wheelIndex) {
+      if (tuningSamplingStarted) {
+        const int motorIndex = WHEEL_TO_MOTOR[wheelIndex];
+        printGainTuningSample(
+          tuningElapsedMs,
+          dt,
+          wheelIndex,
+          tuningSpeedResultValid[motorIndex]
+            ? &tuningSpeedResults[motorIndex]
+            : nullptr
+        );
+      } else {
+        printGainTuningWheelRpm("RAMP", tuningElapsedMs, wheelIndex);
+      }
+    }
     lastTuningLogMs = nowMs;
   }
 }
@@ -568,9 +835,7 @@ void chassisCtrlStartGainTuning(
   // drive command生成時からstep assist scaleを無効化するため、先に有効化する。
   tuningActive = true;
   chassisCtrlSetDriveCommand(vx, vy, wz);
-
-  Serial.print("[CHASSIS] Gain Tuningを開始します duration[ms]=");
-  Serial.println(tuningDurationMs);
+  printGainTuningStart(vx, vy, wz);
 }
 
 bool chassisCtrlGainTuningResultReady() {
