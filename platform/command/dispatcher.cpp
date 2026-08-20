@@ -83,6 +83,18 @@ CommandDispatchResult dispatchCommand(const Command& command) {
       md20aDriverSetState(static_cast<Md20aState>(command.md20aState));
       result.executed = true;
       break;
+    case CommandType::STEP_ASSIST_MODE_TOGGLE:
+      stepAssistCtrlToggleMode();
+      result.executed = true;
+      break;
+    case CommandType::STEP_ASSIST_MANUAL_FRONT_TOGGLE:
+      stepAssistCtrlToggleManualFront();
+      result.executed = true;
+      break;
+    case CommandType::STEP_ASSIST_MANUAL_REAR_TOGGLE:
+      stepAssistCtrlToggleManualRear();
+      result.executed = true;
+      break;
   }
 
   return result;

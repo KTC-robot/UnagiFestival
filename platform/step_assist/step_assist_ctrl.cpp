@@ -4,6 +4,7 @@
 #include "laser_sensor/constants.hpp"
 #include "laser_sensor/laser_sensor_ctrl.hpp"
 #include "device/relay_driver.hpp"
+#include "device/ws2812_driver.hpp"
 #include "step_assist/constants.hpp"
 #include "step_assist/step_assist_logic.hpp"
 
@@ -15,6 +16,9 @@ namespace
 constexpr uint32_t STEP_ASSIST_DEBUG_LOG_INTERVAL_MS = 300;
 
 StepAssistPhase currentPhase = StepAssistPhase::NORMAL;
+StepAssistMode currentMode = StepAssistMode::AUTO;
+bool manualFrontRaised = true;
+bool manualRearRaised = true;
 
 uint32_t phaseEnteredMs = 0;
 uint32_t lastDebugLogMs = 0;
@@ -91,6 +95,18 @@ void setFrontRaised(bool raised)
 void setRearRaised(bool raised)
 {
   relayDriverSetRear(!raised);
+}
+
+void applyModeIndicator(StepAssistMode mode)
+{
+  if (mode == StepAssistMode::AUTO)
+  {
+    ws2812DriverSetRgb(255, 0, 0);
+  }
+  else
+  {
+    ws2812DriverSetRgb(0, 0, 255);
+  }
 }
 
 void applyPhaseOutputs(StepAssistPhase phase)
@@ -374,7 +390,9 @@ void printTransitionTrigger(
 
 bool stepAssistCtrlBegin()
 {
+  currentMode = StepAssistMode::AUTO;
   stepAssistCtrlReset();
+  applyModeIndicator(currentMode);
 
   Serial.println(
       "[STEP_ASSIST] 初期化完了 前補助輪=UP 後補助輪=UP");
@@ -393,6 +411,8 @@ void stepAssistCtrlReset()
   applyPhaseOutputs(currentPhase);
   applyPhaseDriveScale(currentPhase);
   applyPhaseForwardBlock(currentPhase);
+  manualFrontRaised = true;
+  manualRearRaised = true;
 
   resetGuardActive = true;
   resetGuardStartedMs = now;
@@ -403,6 +423,11 @@ void stepAssistCtrlReset()
 
 void stepAssistCtrlUpdate()
 {
+  if (currentMode == StepAssistMode::MANUAL)
+  {
+    return;
+  }
+
   // reset直後も他のloop処理と測距は継続し、phase遷移判定だけを停止する。
   if (resetGuardActive)
   {
@@ -428,4 +453,61 @@ void stepAssistCtrlUpdate()
 
   printTransitionTrigger(currentPhase, input);
   transitionTo(nextPhase);
+}
+
+StepAssistMode stepAssistCtrlGetMode()
+{
+  return currentMode;
+}
+
+void stepAssistCtrlToggleMode()
+{
+  if (currentMode == StepAssistMode::AUTO)
+  {
+    manualFrontRaised = !relayDriverFrontOn();
+    manualRearRaised = !relayDriverRearOn();
+    currentMode = StepAssistMode::MANUAL;
+
+    applyPhaseDriveScale(StepAssistPhase::NORMAL);
+    applyPhaseForwardBlock(StepAssistPhase::NORMAL);
+    applyModeIndicator(currentMode);
+
+    Serial.println("[STEP_ASSIST] モード=MANUAL");
+    Serial.print("[STEP_ASSIST] 前補助輪=");
+    Serial.println(manualFrontRaised ? "UP" : "DOWN");
+    Serial.print("[STEP_ASSIST] 後補助輪=");
+    Serial.println(manualRearRaised ? "UP" : "DOWN");
+    return;
+  }
+
+  currentMode = StepAssistMode::AUTO;
+  stepAssistCtrlReset();
+  applyModeIndicator(currentMode);
+  Serial.println("[STEP_ASSIST] モード=AUTO");
+}
+
+void stepAssistCtrlToggleManualFront()
+{
+  if (currentMode != StepAssistMode::MANUAL)
+  {
+    return;
+  }
+
+  manualFrontRaised = !manualFrontRaised;
+  setFrontRaised(manualFrontRaised);
+  Serial.print("[STEP_ASSIST] 手動 前補助輪=");
+  Serial.println(manualFrontRaised ? "UP" : "DOWN");
+}
+
+void stepAssistCtrlToggleManualRear()
+{
+  if (currentMode != StepAssistMode::MANUAL)
+  {
+    return;
+  }
+
+  manualRearRaised = !manualRearRaised;
+  setRearRaised(manualRearRaised);
+  Serial.print("[STEP_ASSIST] 手動 後補助輪=");
+  Serial.println(manualRearRaised ? "UP" : "DOWN");
 }
