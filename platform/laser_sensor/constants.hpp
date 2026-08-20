@@ -62,7 +62,7 @@ constexpr uint32_t LASER_SENSOR_TCA_CHANNEL_SETTLE_MS = 50;
 // ========================================
 
 // 1センサーを読む周期
-constexpr uint32_t LASER_SENSOR_PERIOD_MS = 100;
+constexpr uint32_t LASER_SENSOR_PERIOD_MS = 50;
 
 // この時間以上新しい値がなければfreshではない
 constexpr uint32_t LASER_SENSOR_STALE_MS = 1000;

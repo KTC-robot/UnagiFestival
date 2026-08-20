@@ -41,8 +41,6 @@ void setup() {
   if (!laserSensorCtrlBegin()) {
     Serial.println("[LASER] 警告: 測距taskの起動に失敗しました");
   }
-
-  ws2812DriverBegin();
   stepAssistCtrlBegin();
 
   Serial.println();
