@@ -14,7 +14,6 @@ enum class CommandReply : uint8_t {
   NONE,         ///< 返信を送らない。
   CTRL_STOP,    ///< 通常停止完了を返信する。
   CTRL_ESTOP,   ///< 緊急停止完了を返信する。
-  POWER,        ///< 現在の走行出力率を返信する。
   WHEEL_GAIN,   ///< 適用した車輪gainを返信する。
   TUNE_START,   ///< RPM計測試験の開始を返信する。
   STEP_RESET,   ///< StepAssistのreset完了を返信する。
@@ -38,7 +37,7 @@ struct CommandDispatchResult {
 };
 
 /**
- * @brief decode済みCommandをChassis・StepAssistへ渡す。
+ * @brief decode済みCommandを対応する制御・deviceへ渡す。
  *
  * @param command 実行する意味的なCommand。
  * @return IM920側で必要な返信・通信state更新情報。

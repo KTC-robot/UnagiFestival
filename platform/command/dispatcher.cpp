@@ -1,6 +1,8 @@
 #include "command/dispatcher.hpp"
 
+#include "air_cylinder/air_cylinder_ctrl.hpp"
 #include "chassis_ctrl/chassis_ctrl.hpp"
+#include "device/md20a_driver.hpp"
 #include "step_assist/step_assist_ctrl.hpp"
 
 CommandDispatchResult dispatchCommand(const Command& command) {
@@ -11,20 +13,19 @@ CommandDispatchResult dispatchCommand(const Command& command) {
   switch (command.type) {
     case CommandType::STOP:
       chassisCtrlStop();
+      airCylinderCtrlStop();
+      md20aDriverSetState(Md20aState::STOPPED);
       result.executed = true;
       result.resetGainTuningTx = true;
       result.reply = CommandReply::CTRL_STOP;
       break;
     case CommandType::EMERGENCY_STOP:
       chassisCtrlStop();
+      airCylinderCtrlStop();
+      md20aDriverSetState(Md20aState::STOPPED);
       result.executed = true;
       result.resetGainTuningTx = true;
       result.reply = CommandReply::CTRL_ESTOP;
-      break;
-    case CommandType::CHANGE_POWER:
-      chassisCtrlChangePower(command.powerDelta);
-      result.executed = true;
-      result.reply = CommandReply::POWER;
       break;
     case CommandType::DRIVE:
       chassisCtrlSetDriveCommand(
@@ -69,6 +70,18 @@ CommandDispatchResult dispatchCommand(const Command& command) {
       stepAssistCtrlReset();
       result.executed = true;
       result.reply = CommandReply::STEP_RESET;
+      break;
+    case CommandType::AIR_FIRE_START:
+      airCylinderCtrlStart();
+      result.executed = true;
+      break;
+    case CommandType::AIR_FIRE_STOP:
+      airCylinderCtrlStop();
+      result.executed = true;
+      break;
+    case CommandType::MD20A_SET_STATE:
+      md20aDriverSetState(static_cast<Md20aState>(command.md20aState));
+      result.executed = true;
       break;
   }
 

@@ -2,7 +2,7 @@
 
 /**
  * @file relay_driver.hpp
- * @brief 前後の電磁弁用GPIOリレーを操作するDriver APIを提供する。
+ * @brief 前後およびAir用GPIOリレーを操作するDriver APIを提供する。
  */
 
 /**
@@ -40,7 +40,13 @@ bool relayDriverFrontOn();
  */
 bool relayDriverRearOn();
 
+/** @brief Air Cylinder用リレー状態を変更する。 */
+void relayDriverSetAir(bool on);
+
+/** @brief Air Cylinder用リレーがONか確認する。 */
+bool relayDriverAirOn();
+
 /**
- * @brief 両電磁弁を安全側OFFへ強制する。
+ * @brief 全電磁弁を安全側OFFへ強制する。
  */
 void relayDriverForceOff();

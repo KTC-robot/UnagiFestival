@@ -3,10 +3,12 @@
 #include <ctype.h>
 #include <string_view>
 
+#include "air_cylinder/air_cylinder_ctrl.hpp"
 #include "chassis_ctrl/chassis_ctrl.hpp"
 #include "command/constants.hpp"
 #include "command/decoder.hpp"
 #include "command/dispatcher.hpp"
+#include "device/md20a_driver.hpp"
 #include "im920/constants.hpp"
 
 using namespace CommandProtocol;
@@ -215,9 +217,6 @@ void sendDispatchReply(const CommandDispatchResult& result) {
     case CommandReply::CTRL_ESTOP:
       Serial.println("[IM920] 緊急停止Commandを実行しました");
       im920SendText("CTRL ESTOP");
-      break;
-    case CommandReply::POWER:
-      im920SendText(String("CTRL PWR=") + String(chassisCtrlGetPowerPercent()));
       break;
     case CommandReply::WHEEL_GAIN: {
       String reply = "WGS,";
@@ -428,10 +427,14 @@ void im920CheckTimeout() {
     resetGainTuningTxState();
     chassisCtrlClearGainTuningResultReady();
   }
-  if (chassisCtrlIsActive()) {
-    Serial.println("[IM920] 通信timeoutのため足回りを停止します");
-    chassisCtrlStop();
+  const bool unsafeState = chassisCtrlIsActive() || airCylinderCtrlActive() ||
+    md20aDriverGetState() != Md20aState::STOPPED;
+  if (unsafeState) {
+    Serial.println("[IM920] 通信timeoutのため出力を安全停止します");
   }
+  chassisCtrlStop();
+  airCylinderCtrlStop();
+  md20aDriverSetState(Md20aState::STOPPED);
   lastRxMs = millis();
 }
 
