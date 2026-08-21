@@ -64,11 +64,11 @@ constexpr float DEFAULT_WHEEL_GAIN_BWD[NUM_WHEELS] = {
 };
 
 constexpr float DEFAULT_WHEEL_GAIN_RIGHT[NUM_WHEELS] = {
-  1.200f, 1.200f, 1.000f, 1.000f
+  0.450f, 0.450f, 1.000f, 1.000f
 };
 
 constexpr float DEFAULT_WHEEL_GAIN_LEFT[NUM_WHEELS] = {
-  1.200f, 1.200f, 1.000f, 1.000f
+  0.450f, 0.450f, 1.000f, 1.000f
 };
 
 }
