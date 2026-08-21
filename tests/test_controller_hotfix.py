@@ -115,9 +115,9 @@ class ControllerHotfixTest(unittest.TestCase):
     def test_lateral_and_rotation_have_wider_deadzone_than_forward(self) -> None:
         # Given: 全スティック軸に中心から10%の入力がある。
         state = controller_state()
-        state.axis_values[AxisCode.LEFT_STICK_X] = 3277
-        state.axis_values[AxisCode.LEFT_STICK_Y] = 3277
-        state.axis_values[AxisCode.RIGHT_STICK_X] = 3277
+        state.axis_values[AxisCode.LEFT_STICK_X] = int(32768 * 0.1)
+        state.axis_values[AxisCode.LEFT_STICK_Y] = int(32768 * 0.1)
+        state.axis_values[AxisCode.RIGHT_STICK_X] = int(32768 * 0.1)
 
         # When: 走行指令へ変換する。
         command = self.handler._make_drive_command(state)
