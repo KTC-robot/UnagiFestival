@@ -112,6 +112,21 @@ class ControllerHotfixTest(unittest.TestCase):
         state.axis_values[AxisCode.RIGHT_TRIGGER_R2] = 255
         self.assertEqual(self.handler._make_drive_command(state), baseline)
 
+    def test_lateral_and_rotation_have_wider_deadzone_than_forward(self) -> None:
+        # Given: 全スティック軸に中心から10%の入力がある。
+        state = controller_state()
+        state.axis_values[AxisCode.LEFT_STICK_X] = int(32768 * 0.1)
+        state.axis_values[AxisCode.LEFT_STICK_Y] = int(32768 * 0.1)
+        state.axis_values[AxisCode.RIGHT_STICK_X] = int(32768 * 0.1)
+
+        # When: 走行指令へ変換する。
+        command = self.handler._make_drive_command(state)
+
+        # Then: 前後だけ反応し、左右移動と回転はデッドゾーン内になる。
+        self.assertNotEqual(command.vx, 0)
+        self.assertEqual(command.vy, 0)
+        self.assertEqual(command.wz, 0)
+
     def test_state_command_wire_ids(self) -> None:
         self.assertEqual(encode_command(AirFireStartCommand()).payload, "430A")
         self.assertEqual(encode_command(AirFireStopCommand()).payload, "430B")

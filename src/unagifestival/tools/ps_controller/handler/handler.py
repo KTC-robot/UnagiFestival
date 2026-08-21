@@ -9,6 +9,7 @@ from unagifestival.tools.ps_controller.enum import (
 from unagifestival.tools.ps_controller.handler.constants import (
     AIR_TRIGGER_ACTIVE_RATIO,
     DRIVE_HZ,
+    LATERAL_ROTATION_DEADZONE,
     STATE_COMMAND_RETRY_COUNT,
     STATE_COMMAND_RETRY_INTERVAL_SECONDS,
     STICK_DEADZONE,
@@ -117,11 +118,12 @@ class Handler:
         return self.im920
 
     @staticmethod
-    def _normalize_axis(value: int, axis_info: AxisInfo | None) -> int:
+    def _normalize_axis(value: int, axis_info: AxisInfo | None, deadzone: float) -> int:
         """
         Args:
             value: Controller軸のraw入力値。
             axis_info: 軸の最小値と最大値を含む情報。
+            deadzone: 中心から無視する入力比率。
 
         Returns:
             deadzone適用後に送信範囲へ正規化した値。
@@ -134,7 +136,7 @@ class Handler:
         center = (axis_info.minimum + axis_info.maximum) / 2.0
         half_range = (axis_info.maximum - axis_info.minimum) / 2.0
         normalized = (value - center) / half_range
-        if abs(normalized) < STICK_DEADZONE:
+        if abs(normalized) < deadzone:
             normalized = 0.0
         normalized = max(-1.0, min(1.0, normalized))
         return int(normalized * STICK_SEND_MAX)
@@ -173,14 +175,17 @@ class Handler:
         lx = self._normalize_axis(
             state.axis_values.get(AxisCode.LEFT_STICK_X, 0),
             state.axis_info.get(AxisCode.LEFT_STICK_X),
+            LATERAL_ROTATION_DEADZONE,
         )
         ly = self._normalize_axis(
             state.axis_values.get(AxisCode.LEFT_STICK_Y, 0),
             state.axis_info.get(AxisCode.LEFT_STICK_Y),
+            STICK_DEADZONE,
         )
         rx = self._normalize_axis(
             state.axis_values.get(AxisCode.RIGHT_STICK_X, 0),
             state.axis_info.get(AxisCode.RIGHT_STICK_X),
+            LATERAL_ROTATION_DEADZONE,
         )
         vx = -ly
         vy = lx

@@ -5,7 +5,7 @@
 namespace {
 constexpr int MD20A_PWM_PIN = 25;
 constexpr int MD20A_DIR_PIN = 26;
-constexpr int MD20A_MOTOR_PWM = 120;
+constexpr int MD20A_MOTOR_PWM = 80;
 
 Md20aState currentState = Md20aState::STOPPED;
 
